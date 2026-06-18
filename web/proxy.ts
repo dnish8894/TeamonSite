@@ -58,12 +58,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except:
-     * - _next/static, _next/image (Next.js assets)
-     * - favicon.ico
-     * - api/scan (public QR scan endpoint — no auth needed)
-     */
     '/((?!_next/static|_next/image|favicon\\.ico|api/scan).*)',
   ],
 }
