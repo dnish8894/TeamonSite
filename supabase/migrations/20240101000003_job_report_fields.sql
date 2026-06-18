@@ -1,0 +1,5 @@
+ALTER TABLE job_reports
+  ADD COLUMN IF NOT EXISTS onsite_time  TEXT,
+  ADD COLUMN IF NOT EXISTS offsite_time TEXT,
+  ADD COLUMN IF NOT EXISTS job_status   TEXT,
+  ADD COLUMN IF NOT EXISTS remarks      TEXT;
