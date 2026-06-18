@@ -81,7 +81,6 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
             reported_by:        data.reported_by        ?? '',
             reported_date:      data.reported_date       ?? today,
             engineer_signature: data.engineer_signature  ?? '',
-            client_name:        data.client_name         ?? '',
             client_date:        data.client_date         ?? today,
             client_signature:   data.client_signature    ?? '',
           })

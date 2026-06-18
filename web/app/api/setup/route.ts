@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   if (userErr) {
     // Clean up — delete auth user + org
-    await supabaseAdmin.auth.admin.deleteUser(authUser.user.id)
+    await supabaseAdmin.auth.admin.deleteUser(authUser.user!.id)
     await supabaseAdmin.from('organisations').delete().eq('id', org.id)
     return NextResponse.json({ error: userErr.message }, { status: 500 })
   }

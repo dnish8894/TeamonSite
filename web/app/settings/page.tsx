@@ -208,7 +208,7 @@ export default function SettingsPage() {
 
   function openEditUser(u: User) {
     setEditUser(u)
-    setUserForm({ full_name: u.full_name, email: u.email, phone: u.phone ?? '', role: u.role })
+    setUserForm({ full_name: u.full_name, email: u.email, phone: u.phone ?? '', role: u.role, password: '' })
     setError(''); setShowUserModal(true)
   }
 

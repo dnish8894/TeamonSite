@@ -194,7 +194,7 @@ export default function StandbyPage() {
       },
       didParseCell(data) {
         if (data.section === 'body') {
-          const dateStr = String(data.row.raw[0])
+          const dateStr = String((data.row.raw as unknown[])[0])
           if (dateStr) {
             const dayNum = parseInt(dateStr)
             if (!isNaN(dayNum)) {

@@ -16,7 +16,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   if (schedErr || !sched) return NextResponse.json({ error: 'Schedule not found.' }, { status: 404 })
 
-  const orgId = (sched.sites as { clients: { organisation_id: string } | null } | null)
+  const orgId = (sched.sites as unknown as { clients: { organisation_id: string } | null } | null)
     ?.clients?.organisation_id
 
   if (!orgId) return NextResponse.json({ error: 'Organisation not found.' }, { status: 400 })

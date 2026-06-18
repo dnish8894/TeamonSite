@@ -19,7 +19,7 @@ export async function GET(
     return NextResponse.json({
       tier: 'site',
       label: data.name,
-      sublabel: (data as { clients: { name: string } | null }).clients?.name ?? '',
+      sublabel: (data as unknown as { clients: { name: string } | null }).clients?.name ?? '',
       details: {
         site_id: data.id,
         address: [data.address, data.city, data.state].filter(Boolean).join(', ') || '—',
@@ -38,7 +38,7 @@ export async function GET(
 
     if (error || !data) return NextResponse.json(null, { status: 404 })
 
-    const s = data as {
+    const s = data as unknown as {
       id: string; name: string; type: string; brand: string | null; model: string | null;
       location_desc: string | null; install_date: string | null; site_id: string;
       sites: { name: string; clients: { name: string } | null } | null
@@ -69,7 +69,7 @@ export async function GET(
 
     if (error || !data) return NextResponse.json(null, { status: 404 })
 
-    const d = data as {
+    const d = data as unknown as {
       id: string; name: string; tag_id: string | null; device_type: string;
       brand: string | null; model: string | null; serial_no: string | null;
       ip_address: string | null; location_desc: string | null; floor: number | null;

@@ -16,8 +16,8 @@ const today = new Date().toISOString().split('T')[0]
 interface Area { name: string; floor: string; notes: string }
 
 export default function SiteSurveyTab({ projectId, projectName = 'Project' }: { projectId: string; projectName?: string }) {
-  const engSigRef = useRef<SignatureCanvas>(null)
-  const cliSigRef = useRef<SignatureCanvas>(null)
+  const engSigRef = useRef<SignatureCanvas>(null) as React.RefObject<SignatureCanvas>
+  const cliSigRef = useRef<SignatureCanvas>(null) as React.RefObject<SignatureCanvas>
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)

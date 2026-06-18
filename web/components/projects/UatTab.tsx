@@ -64,8 +64,8 @@ const DEFAULT_TESTS: Record<string, string[]> = {
 interface TestItem { system: string; description: string; result: 'pass' | 'fail' | 'na' | 'pending'; notes: string }
 
 export default function UatTab({ projectId, projectName = 'Project' }: { projectId: string; projectName?: string }) {
-  const engSigRef = useRef<SignatureCanvas>(null)
-  const cliSigRef = useRef<SignatureCanvas>(null)
+  const engSigRef = useRef<SignatureCanvas>(null) as React.RefObject<SignatureCanvas>
+  const cliSigRef = useRef<SignatureCanvas>(null) as React.RefObject<SignatureCanvas>
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [form, setForm] = useState({

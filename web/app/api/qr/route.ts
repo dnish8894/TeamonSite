@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     }
 
     const results = await Promise.all([
-      makeQR('site', site.id, site.name, (site as { clients: { name: string } | null }).clients?.name ?? ''),
+      makeQR('site', site!.id, site!.name, (site as unknown as { clients: { name: string } | null })?.clients?.name ?? ''),
       ...(systems ?? []).map((s: { id: string; name: string; type: string }) =>
         makeQR('system', s.id, s.name || s.type, s.type)
       ),
