@@ -258,10 +258,6 @@ export default function ProjectsPage() {
                   {STATUS_STEPS.map(s => <option key={s} value={s}>{STATUS_STYLE[s].label}</option>)}
                 </Select>
               </Field>
-              <Field label="Contract Value (RM)">
-                <Input type="number" placeholder="50000" value={form.value}
-                  onChange={e => set('value', e.target.value)} />
-              </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Start Date">

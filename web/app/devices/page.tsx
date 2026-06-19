@@ -23,7 +23,7 @@ const SYSTEM_COLORS: Record<string, string> = {
 }
 
 const emptySystem = { site_id: '', type: 'cctv', name: '', brand: '', model: '', location_desc: '', install_date: '', warranty_expiry: '', notes: '' }
-const emptyDevice = { system_id: '', device_type: 'camera', name: '', brand: '', model: '', serial_no: '', ip_address: '', mac_address: '', location_desc: '', floor: '', install_date: '', tag_id: '' }
+const emptyDevice = { system_id: '', device_type: 'camera', name: '', brand: '', model: '', serial_no: '', ip_address: '', mac_address: '', location_desc: '', floor: '', install_date: '', warranty_start: '', warranty_expiry: '', tag_id: '' }
 
 export default function DevicesPage() {
   const [sites, setSites]       = useState<Site[]>([])
@@ -351,6 +351,14 @@ export default function DevicesPage() {
               </Field>
               <Field label="Location">
                 <Input placeholder="e.g. Main entrance" value={devForm.location_desc} onChange={e => setD('location_desc', e.target.value)} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Warranty Start">
+                <Input type="date" value={devForm.warranty_start} onChange={e => setD('warranty_start', e.target.value)} />
+              </Field>
+              <Field label="Warranty End">
+                <Input type="date" value={devForm.warranty_expiry} onChange={e => setD('warranty_expiry', e.target.value)} />
               </Field>
             </div>
             {error && <p className="text-sm px-3 py-2 rounded-lg" style={{ color: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}>{error}</p>}

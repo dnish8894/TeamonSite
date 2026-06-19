@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button'
 import PhotoUpload from '@/components/tickets/PhotoUpload'
 import JobReportForm from '@/components/tickets/JobReportForm'
 import { generateJobReportPdf } from '@/lib/generateJobReportPdf'
+import { generateJobReportDocx } from '@/lib/generateJobReportDocx'
 
 /* ── Types ─────────────────────────────────────────── */
 interface Ticket {
@@ -24,7 +25,12 @@ interface Ticket {
   elv_systems: { id: string; name: string; type: string } | null
   devices: { id: string; name: string; tag_id: string | null; device_type: string; model: string | null; location_desc: string | null; floor: number | null } | null
   engineers: { id: string; users: { full_name: string; phone: string | null } | null } | null
+  work_status: 'not_started' | 'in_progress' | 'paused' | 'completed'
+  work_seconds: number
+  work_last_resume_at: string | null
+  ticket_groups: { group_id: string; engineer_groups: { id: string; name: string } | null }[]
 }
+interface Group { id: string; name: string }
 interface Activity {
   id: string; action: string; old_value: string | null; new_value: string | null
   note: string | null; created_at: string; users: { full_name: string } | null
@@ -63,33 +69,53 @@ export default function TicketDetailPage() {
   const [ticket, setTicket]       = useState<Ticket | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
   const [engineers, setEngineers] = useState<Engineer[]>([])
+  const [groups, setGroups]       = useState<Group[]>([])
   const [loading, setLoading]     = useState(true)
   const [note, setNote]           = useState('')
   const [saving, setSaving]       = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [docxLoading, setDocxLoading] = useState(false)
   const [assignId, setAssignId]   = useState('')
+  const [groupIds, setGroupIds]   = useState<string[]>([])
   const [newStatus, setNewStatus] = useState('')
   const [showEta, setShowEta]     = useState(false)
   const [etaDate, setEtaDate]     = useState('')
   const [etaTime, setEtaTime]     = useState('')
   const [etaSaving, setEtaSaving] = useState(false)
+  const [workSaving, setWorkSaving] = useState(false)
+  const [tick, setTick]           = useState(0)
 
   async function load() {
-    const [tRes, aRes, eRes] = await Promise.all([
+    const [tRes, aRes, eRes, gRes] = await Promise.all([
       fetch(`/api/tickets/${id}`),
       fetch(`/api/tickets/${id}/activities`),
       fetch('/api/engineers'),
+      fetch('/api/engineer-groups'),
     ])
     const t = await tRes.json()
     setTicket(t)
     setActivities(await aRes.json())
     setEngineers(await eRes.json())
+    const groupData = await gRes.json()
+    setGroups(Array.isArray(groupData) ? groupData : [])
     setAssignId(t?.engineers?.id ?? '')
+    setGroupIds((t?.ticket_groups ?? []).map((g: { group_id: string }) => g.group_id))
     setNewStatus(t?.status ?? '')
     setLoading(false)
   }
 
   useEffect(() => { load() }, [id])
+
+  // Live ticking clock while work is in progress
+  useEffect(() => {
+    if (ticket?.work_status !== 'in_progress') return
+    const interval = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(interval)
+  }, [ticket?.work_status])
+
+  function toggleGroup(gid: string) {
+    setGroupIds(g => g.includes(gid) ? g.filter(x => x !== gid) : [...g, gid])
+  }
 
   async function saveChanges() {
     if (!ticket) return
@@ -100,6 +126,10 @@ export default function TicketDetailPage() {
       body.assigned_to = assignId || null
       if (assignId) body.status = 'assigned'
     }
+    const currentGroupIds = (ticket.ticket_groups ?? []).map(g => g.group_id)
+    if (JSON.stringify([...groupIds].sort()) !== JSON.stringify([...currentGroupIds].sort())) {
+      body.group_ids = groupIds
+    }
     if (Object.keys(body).length > 0) {
       await fetch(`/api/tickets/${id}`, {
         method: 'PATCH',
@@ -109,6 +139,33 @@ export default function TicketDetailPage() {
     }
     setSaving(false)
     load()
+  }
+
+  async function doWorkAction(action: 'start' | 'pause' | 'resume' | 'complete') {
+    setWorkSaving(true)
+    await fetch(`/api/tickets/${id}/work`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    })
+    setWorkSaving(false)
+    load()
+  }
+
+  function elapsedSeconds(): number {
+    if (!ticket) return 0
+    let secs = ticket.work_seconds ?? 0
+    if (ticket.work_status === 'in_progress' && ticket.work_last_resume_at) {
+      secs += Math.floor((Date.now() - new Date(ticket.work_last_resume_at).getTime()) / 1000)
+    }
+    return secs
+  }
+
+  function formatDuration(totalSeconds: number): string {
+    const h = Math.floor(totalSeconds / 3600)
+    const m = Math.floor((totalSeconds % 3600) / 60)
+    const s = totalSeconds % 60
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
   async function saveEta() {
@@ -144,6 +201,14 @@ export default function TicketDetailPage() {
     const data = await res.json()
     await generateJobReportPdf(data)
     setPdfLoading(false)
+  }
+
+  async function downloadDocx() {
+    setDocxLoading(true)
+    const res = await fetch(`/api/tickets/${id}/pdf`)
+    const data = await res.json()
+    await generateJobReportDocx(data)
+    setDocxLoading(false)
   }
 
   if (loading) return <div className="p-8" style={{ color: 'var(--text-subtle)' }}>Loading...</div>
@@ -185,13 +250,20 @@ export default function TicketDetailPage() {
           )}
         </div>
 
-        {/* Right side — SLA + PDF */}
+        {/* Right side — SLA + Download */}
         <div className="flex flex-col items-end gap-3">
-          <button onClick={downloadPdf} disabled={pdfLoading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
-            style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>
-            <FileDown size={15} /> {pdfLoading ? 'Generating...' : 'Download PDF'}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={downloadPdf} disabled={pdfLoading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+              style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>
+              <FileDown size={15} /> {pdfLoading ? 'Generating...' : 'PDF'}
+            </button>
+            <button onClick={downloadDocx} disabled={docxLoading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+              style={{ background: 'var(--color-info-bg)', color: 'var(--color-info)' }}>
+              <FileDown size={15} /> {docxLoading ? 'Generating...' : 'DOCX'}
+            </button>
+          </div>
           <div className="text-right text-sm">
             {slaBreached ? (
               <div className="flex items-center gap-1 font-medium" style={{ color: 'var(--color-danger)' }}>
@@ -313,7 +385,7 @@ export default function TicketDetailPage() {
             )}
           </div>
           {/* Field Service Report Form */}
-          <JobReportForm ticketId={id} onSaved={load} />
+          <JobReportForm ticketId={id} siteId={ticket.sites?.id} onSaved={load} locked={ticket.work_status === 'not_started'} workSeconds={elapsedSeconds()} />
 
           {/* Photos */}
           <PhotoUpload ticketId={id} />
@@ -345,9 +417,89 @@ export default function TicketDetailPage() {
               </Select>
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Assigned Groups</label>
+              {groups.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>No groups created yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {groups.map(g => {
+                    const selected = groupIds.includes(g.id)
+                    return (
+                      <button key={g.id} type="button" onClick={() => toggleGroup(g.id)}
+                        className="px-2.5 py-1 rounded-full text-xs font-medium border transition-all"
+                        style={selected
+                          ? { background: 'var(--color-info-bg)', color: 'var(--color-info)', borderColor: 'var(--color-info)' }
+                          : { background: 'transparent', color: 'var(--text-subtle)', borderColor: 'var(--border)' }}>
+                        {g.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>
+                All engineers in selected groups will be notified.
+              </p>
+            </div>
+
             <Button className="w-full justify-center" loading={saving} onClick={saveChanges}>
               Save Changes
             </Button>
+          </div>
+
+          {/* Work Timer Card */}
+          <div className="rounded-xl border p-5 space-y-3" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }} key={tick}>
+            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--text-subtle)' }}>Work Timer</h2>
+            <div className="text-center py-2">
+              <p className="text-3xl font-bold font-mono" style={{ color: 'var(--text-base)' }}>
+                {formatDuration(elapsedSeconds())}
+              </p>
+              <p className="text-xs mt-1 capitalize" style={{
+                color: ticket.work_status === 'in_progress' ? 'var(--color-success)'
+                  : ticket.work_status === 'paused' ? 'var(--color-warning)'
+                  : ticket.work_status === 'completed' ? 'var(--color-info)'
+                  : 'var(--text-subtle)',
+              }}>
+                {ticket.work_status.replace('_', ' ')}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {ticket.work_status === 'not_started' && (
+                <Button className="w-full justify-center" loading={workSaving} onClick={() => doWorkAction('start')}>
+                  Start
+                </Button>
+              )}
+              {ticket.work_status === 'in_progress' && (
+                <>
+                  <Button variant="secondary" className="flex-1 justify-center" loading={workSaving} onClick={() => doWorkAction('pause')}>
+                    Pause
+                  </Button>
+                  <Button className="flex-1 justify-center" loading={workSaving} onClick={() => doWorkAction('complete')}>
+                    Complete
+                  </Button>
+                </>
+              )}
+              {ticket.work_status === 'paused' && (
+                <>
+                  <Button variant="secondary" className="flex-1 justify-center" loading={workSaving} onClick={() => doWorkAction('resume')}>
+                    Resume
+                  </Button>
+                  <Button className="flex-1 justify-center" loading={workSaving} onClick={() => doWorkAction('complete')}>
+                    Complete
+                  </Button>
+                </>
+              )}
+              {ticket.work_status === 'completed' && (
+                <p className="w-full text-center text-sm" style={{ color: 'var(--color-success)' }}>
+                  Work completed
+                </p>
+              )}
+            </div>
+            {ticket.work_status === 'not_started' && (
+              <p className="text-xs text-center" style={{ color: 'var(--text-subtle)' }}>
+                Engineer must click Start before filling the field service report.
+              </p>
+            )}
           </div>
 
           {/* ETA Card */}

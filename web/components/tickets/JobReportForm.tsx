@@ -3,11 +3,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { Field, Input, Select, Textarea } from '@/components/ui/Field'
 import Button from '@/components/ui/Button'
-import { CheckCircle, Plus, Trash2, RotateCcw } from 'lucide-react'
+import { CheckCircle, Plus, Trash2, RotateCcw, MapPin } from 'lucide-react'
 import SignatureCanvas from 'react-signature-canvas'
 
 interface Part {
   device: string; qty: string; model: string; serial_no: string; remarks: string
+}
+
+interface ExtraField {
+  id: string
+  label: string
+  field_type: 'text' | 'time' | 'location' | 'yes_no' | 'signature'
 }
 
 interface ReportData {
@@ -50,15 +56,45 @@ const JOB_STATUSES = [
   { value: 'resolved',       label: 'Resolved / Completed' },
 ]
 
-export default function JobReportForm({ ticketId, onSaved }: { ticketId: string; onSaved?: () => void }) {
+function formatHrsMin(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  return `${h}h ${m}m`
+}
+
+export default function JobReportForm({ ticketId, siteId, onSaved, locked = false, workSeconds = 0 }: { ticketId: string; siteId?: string | null; onSaved?: () => void; locked?: boolean; workSeconds?: number }) {
   const [form, setForm]     = useState<ReportData>(empty)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [loading, setLoading] = useState(true)
+  const [extraFields, setExtraFields] = useState<ExtraField[]>([])
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const customSigRefs = useRef<Record<string, SignatureCanvas | null>>({})
   const sigRef       = useRef<SignatureCanvas>(null)
   const clientSigRef = useRef<SignatureCanvas>(null)
 
   const set = (k: keyof ReportData, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const setCustom = (fieldId: string, v: string) => setCustomValues(v0 => ({ ...v0, [fieldId]: v }))
+
+  useEffect(() => {
+    if (!siteId) { setExtraFields([]); return }
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(org => {
+        const rs = org?.report_settings ?? {}
+        const fields: ExtraField[] = rs.extra_fields ?? []
+        const siteIds: string[] = rs.extra_field_site_ids ?? []
+        setExtraFields(siteIds.includes(siteId) ? fields : [])
+      })
+  }, [siteId])
+
+  function captureLocation(fieldId: string) {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      pos => setCustom(fieldId, `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`),
+      () => alert('Could not get location. Check browser permissions.'),
+    )
+  }
 
   useEffect(() => {
     fetch(`/api/tickets/${ticketId}/report`)
@@ -90,12 +126,23 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
           if (data.client_signature && clientSigRef.current) {
             clientSigRef.current.fromDataURL(data.client_signature)
           }
+          setCustomValues(data.custom_field_values ?? {})
         }
         setLoading(false)
       })
   }, [ticketId])
 
+  // Re-apply saved custom signature values once their canvases mount
+  useEffect(() => {
+    extraFields.forEach(f => {
+      if (f.field_type === 'signature' && customValues[f.id]) {
+        customSigRefs.current[f.id]?.fromDataURL(customValues[f.id])
+      }
+    })
+  }, [extraFields, customValues])
+
   async function save() {
+    if (locked) return
     setSaving(true)
     const engSig = sigRef.current && !sigRef.current.isEmpty()
       ? sigRef.current.getTrimmedCanvas().toDataURL('image/png')
@@ -104,12 +151,20 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
       ? clientSigRef.current.getTrimmedCanvas().toDataURL('image/png')
       : form.client_signature || null
 
+    const finalCustomValues = { ...customValues }
+    for (const f of extraFields) {
+      if (f.field_type === 'signature') {
+        const ref = customSigRefs.current[f.id]
+        if (ref && !ref.isEmpty()) finalCustomValues[f.id] = ref.getTrimmedCanvas().toDataURL('image/png')
+      }
+    }
+
     const body = {
       findings:           form.findings       || null,
       root_cause:         form.root_cause     || null,
       work_done:          form.work_done      || null,
       recommendation:     form.recommendation || null,
-      labour_hrs:         form.labour_hrs     ? parseFloat(form.labour_hrs) : null,
+      labour_hrs:         form.labour_hrs     ? parseFloat(form.labour_hrs) : (workSeconds > 0 ? Math.round((workSeconds / 3600) * 100) / 100 : null),
       travel_hrs:         form.travel_hrs     ? parseFloat(form.travel_hrs) : null,
       onsite_time:        form.onsite_time    || null,
       offsite_time:       form.offsite_time   || null,
@@ -122,6 +177,7 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
       reported_date:      form.reported_date  || null,
       engineer_signature: engSig,
       client_signature:   clientSig,
+      custom_field_values: finalCustomValues,
     }
     await fetch(`/api/tickets/${ticketId}/report`, {
       method: 'POST',
@@ -159,12 +215,18 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
           <h2 className="font-semibold" style={{ color: 'var(--text-base)' }}>Field Service Report</h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-subtle)' }}>Fill in by the engineer on-site</p>
         </div>
-        <Button onClick={save} loading={saving}>
+        <Button onClick={save} loading={saving} disabled={locked}>
           {saved ? <span className="flex items-center gap-1.5"><CheckCircle size={14} /> Saved</span> : 'Save Report'}
         </Button>
       </div>
 
-      <div className="p-5 space-y-6">
+      {locked && (
+        <div className="px-5 py-3 text-sm" style={{ background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>
+          Click "Start" on the Work Timer before filling in the field service report.
+        </div>
+      )}
+
+      <div className="p-5 space-y-6" style={locked ? { pointerEvents: 'none', opacity: 0.5 } : undefined}>
 
         {/* ── Time tracking ──────────────────────────── */}
         <section>
@@ -182,6 +244,15 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
             <Field label="Travel (hrs)">
               <Input type="number" min="0" step="0.5" placeholder="1.0" value={form.travel_hrs} onChange={e => set('travel_hrs', e.target.value)} />
             </Field>
+          </div>
+          <div className="mt-3 px-3 py-2 rounded-lg flex items-center justify-between"
+            style={{ background: 'var(--color-success-bg)' }}>
+            <span className="text-xs font-medium" style={{ color: 'var(--color-success)' }}>
+              Time Tracked (Start → Complete)
+            </span>
+            <span className="text-sm font-bold" style={{ color: 'var(--color-success)' }}>
+              {formatHrsMin(workSeconds)}
+            </span>
           </div>
         </section>
 
@@ -309,6 +380,86 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
           </div>
         </section>
 
+        {/* ── Extra Fields (from Settings → FSR & Reports, assigned to this site) ──── */}
+        {extraFields.length > 0 && (
+          <section>
+            <SectionLabel>Additional Information</SectionLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+              {extraFields.map(f => {
+                if (f.field_type === 'text') {
+                  return (
+                    <Field key={f.id} label={f.label}>
+                      <Input value={customValues[f.id] ?? ''} onChange={e => setCustom(f.id, e.target.value)} />
+                    </Field>
+                  )
+                }
+                if (f.field_type === 'time') {
+                  return (
+                    <Field key={f.id} label={f.label}>
+                      <Input type="time" value={customValues[f.id] ?? ''} onChange={e => setCustom(f.id, e.target.value)} />
+                    </Field>
+                  )
+                }
+                if (f.field_type === 'yes_no') {
+                  return (
+                    <div key={f.id}>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>{f.label}</label>
+                      <div className="flex gap-2">
+                        {['yes', 'no'].map(opt => (
+                          <button key={opt} type="button" onClick={() => setCustom(f.id, opt)}
+                            className="flex-1 py-2 rounded-lg text-sm font-medium border capitalize transition-all"
+                            style={customValues[f.id] === opt
+                              ? { background: 'var(--color-info-bg)', color: 'var(--color-info)', borderColor: 'var(--color-info)' }
+                              : { background: 'transparent', color: 'var(--text-subtle)', borderColor: 'var(--border)' }}>
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                }
+                if (f.field_type === 'location') {
+                  return (
+                    <div key={f.id}>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>{f.label}</label>
+                      <div className="flex gap-2">
+                        <Input placeholder="lat, lng" value={customValues[f.id] ?? ''} onChange={e => setCustom(f.id, e.target.value)} />
+                        <button type="button" onClick={() => captureLocation(f.id)}
+                          className="flex items-center gap-1 px-3 rounded-lg text-xs font-medium flex-shrink-0"
+                          style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>
+                          <MapPin size={13} /> Use My Location
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
+                if (f.field_type === 'signature') {
+                  return (
+                    <div key={f.id} className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>{f.label}</label>
+                        <button type="button"
+                          onClick={() => { customSigRefs.current[f.id]?.clear(); setCustom(f.id, '') }}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg"
+                          style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
+                          <RotateCcw size={11} /> Clear
+                        </button>
+                      </div>
+                      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)', background: '#fff' }}>
+                        <SignatureCanvas
+                          ref={(r) => { customSigRefs.current[f.id] = r }}
+                          penColor="#1e3a8a"
+                          canvasProps={{ style: { width: '100%', height: '120px', display: 'block' } }} />
+                      </div>
+                    </div>
+                  )
+                }
+                return null
+              })}
+            </div>
+          </section>
+        )}
+
         {/* ── Job Status + Remarks ───────────────────── */}
         <section>
           <SectionLabel>Job Status & Remarks</SectionLabel>
@@ -402,15 +553,6 @@ export default function JobReportForm({ ticketId, onSaved }: { ticketId: string;
 
           </div>
         </section>
-
-        {/* Save button bottom */}
-        <div className="flex justify-end pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-          <Button onClick={save} loading={saving}>
-            {saved
-              ? <span className="flex items-center gap-1.5"><CheckCircle size={14} /> Saved</span>
-              : 'Save Field Service Report'}
-          </Button>
-        </div>
       </div>
     </div>
   )

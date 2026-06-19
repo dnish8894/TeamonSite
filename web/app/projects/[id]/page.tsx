@@ -180,7 +180,6 @@ export default function ProjectDetailPage() {
       {/* Project meta row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Contract Value', value: project.value ? `RM ${Number(project.value).toLocaleString()}` : '—', color: 'var(--color-success)' },
           { label: 'Start Date',     value: project.start_date ? new Date(project.start_date).toLocaleDateString('en-MY', { day:'numeric', month:'short', year:'numeric' }) : '—', color: 'var(--text-base)' },
           { label: 'End Date',       value: project.end_date   ? new Date(project.end_date).toLocaleDateString('en-MY',   { day:'numeric', month:'short', year:'numeric' }) : 'TBD', color: 'var(--text-base)' },
           { label: 'Client Type',    value: project.clients?.type ?? '—', color: 'var(--text-base)' },
@@ -220,7 +219,6 @@ export default function ProjectDetailPage() {
                 ['Client',         project.clients?.name ?? '—'],
                 ['Site',           project.sites?.name ?? '—'],
                 ['Status',         st.label],
-                ['Contract Value', project.value ? `RM ${Number(project.value).toLocaleString()}` : '—'],
                 ['Start Date',     project.start_date ?? '—'],
                 ['End Date',       project.end_date ?? '—'],
               ].map(([label, value]) => (

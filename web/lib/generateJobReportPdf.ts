@@ -23,6 +23,8 @@ export interface ReportSettings {
   show_recommendations?: boolean
   show_parts?:           boolean
   show_photos?:          boolean
+  extra_fields?: { id: string; label: string; field_type: 'text' | 'time' | 'location' | 'yes_no' | 'signature' }[]
+  extra_field_site_ids?: string[]
 }
 
 // Color presets
@@ -37,31 +39,32 @@ const COLOR_THEMES: Record<string, { primary: [number,number,number]; accent: [n
 function defaults(rs: ReportSettings | null | undefined) {
   const theme = COLOR_THEMES[rs?.color_theme ?? 'navy'] ?? COLOR_THEMES.navy
   return {
-    report_title:       rs?.report_title                       ?? 'FIELD SERVICE REPORT',
+    report_title:       rs?.report_title                       || 'FIELD SERVICE REPORT',
     primary:            theme.primary,
     accent:             theme.accent,
-    breakdown_box:      rs?.section_labels?.breakdown_box      ?? 'Breakdown Details',
-    problem:            rs?.section_labels?.problem            ?? 'Description of Problem',
-    inspection:         rs?.section_labels?.inspection         ?? 'Inspection / Observation',
-    root_cause:         rs?.section_labels?.root_cause         ?? 'Root Cause Analysis',
-    action_taken:       rs?.section_labels?.action_taken       ?? 'Action Taken / Analysis',
-    recommendations:    rs?.section_labels?.recommendations    ?? 'Offsite Repair Actions / Recommendations (if any)',
-    parts:              rs?.section_labels?.parts              ?? 'Details of Part(s) Replacement',
-    photos:             rs?.section_labels?.photos             ?? 'Photo Records',
-    ack:                rs?.section_labels?.ack                ?? 'Acknowledgement',
-    eng_label:          rs?.ack_labels?.engineer               ?? 'Tech / Engineer',
-    cli_label:          rs?.ack_labels?.client                 ?? 'Client Representative',
+    breakdown_box:      rs?.section_labels?.breakdown_box      || 'Breakdown Details',
+    problem:            rs?.section_labels?.problem            || 'Description of Problem',
+    inspection:         rs?.section_labels?.inspection         || 'Inspection / Observation',
+    root_cause:         rs?.section_labels?.root_cause         || 'Root Cause Analysis',
+    action_taken:       rs?.section_labels?.action_taken       || 'Action Taken / Analysis',
+    recommendations:    rs?.section_labels?.recommendations    || 'Offsite Repair Actions / Recommendations (if any)',
+    parts:              rs?.section_labels?.parts              || 'Details of Part(s) Replacement',
+    photos:             rs?.section_labels?.photos             || 'Photo Records',
+    ack:                rs?.section_labels?.ack                || 'Acknowledgement',
+    eng_label:          rs?.ack_labels?.engineer               || 'Tech / Engineer',
+    cli_label:          rs?.ack_labels?.client                 || 'Client Representative',
     show_recommendations: rs?.show_recommendations             ?? true,
     show_parts:           rs?.show_parts                       ?? true,
     show_photos:          rs?.show_photos                      ?? true,
   }
 }
 
-interface PdfData {
+export interface PdfData {
   ticket: {
     ticket_no: string; title: string; description: string | null
     type: string; priority: string; status: string
     reporter_name: string | null; reporter_phone: string | null
+    site_id?: string | null
     created_at: string; resolved_at: string | null; closed_at: string | null
     started_at?: string | null
     sla_resolve_due: string | null; sla_response_due: string | null
@@ -80,9 +83,18 @@ interface PdfData {
     reported_by: string | null; reported_date: string | null; engineer_signature: string | null
     parts_used: Array<{ device: string; qty: string; model: string; serial_no: string; remarks: string }> | null
     photos: Array<{ url: string; label: string; caption: string }> | null
+    custom_field_values?: Record<string, string> | null
   } | null
   activities: Array<{ action: string; new_value: string | null; note: string | null; created_at: string; users: { full_name: string } | null }>
   org: { name: string; phone: string | null; email: string | null; address: string | null; report_settings?: ReportSettings | null }
+}
+
+export function getApplicableExtraFields(data: PdfData) {
+  const rs = data.org.report_settings
+  const fields = rs?.extra_fields ?? []
+  const siteIds = rs?.extra_field_site_ids ?? []
+  if (!data.ticket.site_id || !siteIds.includes(data.ticket.site_id)) return []
+  return fields
 }
 
 export async function generateJobReportPdf(data: PdfData) {
@@ -156,6 +168,9 @@ export async function generateJobReportPdf(data: PdfData) {
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...BLACK)
       const lines = doc.splitTextToSize(content.trim(), cw - 6)
       doc.text(lines, ml + 3, y + 5)
+    } else {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(...GREY)
+      doc.text('— Not filled in —', ml + 3, y + 5)
     }
     y += bh + 5
   }
@@ -243,6 +258,36 @@ export async function generateJobReportPdf(data: PdfData) {
   if (cfg.show_recommendations) {
     section(cfg.recommendations)
     textBox(report?.recommendation, 16)
+  }
+
+  // ── Section: Extra Fields (assigned to this site via Settings) ─────────
+  const extraFields = getApplicableExtraFields(data)
+  if (extraFields.length > 0) {
+    section('Additional Information')
+    const cv = report?.custom_field_values ?? {}
+    for (const f of extraFields) {
+      const val = cv[f.id]
+      if (f.field_type === 'signature') {
+        if (y + 28 > H - 15) { doc.addPage(); pageHeader() }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GREY)
+        doc.text(f.label, ml, y)
+        y += 2
+        if (val) {
+          try { doc.addImage(val, 'PNG', ml, y, 50, 18) } catch { /* skip */ }
+        } else {
+          doc.setDrawColor(...LGREY); doc.setFillColor(252,252,252); doc.rect(ml, y, 50, 18, 'FD')
+        }
+        y += 22
+      } else {
+        if (y + 6 > H - 15) { doc.addPage(); pageHeader() }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GREY)
+        doc.text(f.label, ml, y)
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(...BLACK)
+        doc.text(val ?? '—', ml + 55, y)
+        y += 5.5
+      }
+    }
+    y += 4
   }
 
   // ── Job Status row ────────────────────────────────────

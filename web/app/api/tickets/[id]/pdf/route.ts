@@ -14,7 +14,7 @@ export async function GET(
       .from('tickets')
       .select(`
         id, ticket_no, title, description, type, priority, status,
-        is_chargeable, reporter_name, reporter_phone,
+        is_chargeable, reporter_name, reporter_phone, site_id,
         created_at, resolved_at, closed_at,
         sla_resolve_due, sla_response_due,
         sites ( name, address, city, state, site_contact, site_phone, clients ( name, type ) ),
@@ -26,7 +26,7 @@ export async function GET(
       .single(),
     supabaseAdmin
       .from('job_reports')
-      .select('findings, root_cause, work_done, recommendation, photos, parts_used, labour_hrs, travel_hrs, client_name, client_date, client_signature, signed_at, onsite_time, offsite_time, job_status, remarks, reported_by, reported_date, engineer_signature')
+      .select('findings, root_cause, work_done, recommendation, photos, parts_used, labour_hrs, travel_hrs, client_name, client_date, client_signature, signed_at, onsite_time, offsite_time, job_status, remarks, reported_by, reported_date, engineer_signature, custom_field_values')
       .eq('ticket_id', id)
       .single(),
     supabaseAdmin

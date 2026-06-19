@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from('devices')
-      .select('id, name, tag_id, system_id, device_type, model, serial_no, location_desc, floor')
+      .select('id, name, tag_id, system_id, device_type, model, serial_no, location_desc, floor, install_date, warranty_start, warranty_expiry')
       .in('system_id', sysIds)
       .eq('is_active', true)
       .order('name')

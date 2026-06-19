@@ -7,7 +7,7 @@ import Modal from '@/components/ui/Modal'
 import {
   Building2, Users, Info, CheckCircle, Plus,
   Edit2, ToggleLeft, ToggleRight, Shield, Mail, Phone,
-  FileText, Palette, Eye, EyeOff, Tag,
+  FileText, Palette, Eye, EyeOff, Tag, Trash2, Type, Clock, MapPin, PenTool, ListPlus,
 } from 'lucide-react'
 
 /* ── Types ─────────────────────────────────────────── */
@@ -34,7 +34,15 @@ interface ReportSettings {
   show_recommendations?: boolean
   show_parts?: boolean
   show_photos?: boolean
+  extra_fields?: ExtraField[]
+  extra_field_site_ids?: string[]
 }
+interface ExtraField {
+  id: string
+  label: string
+  field_type: 'text' | 'time' | 'location' | 'yes_no' | 'signature'
+}
+interface SiteOption { id: string; name: string; clients: { name: string } | null }
 
 /* ── Constants ──────────────────────────────────────── */
 const ROLE_LABELS: Record<string, string> = {
@@ -87,7 +95,17 @@ const defaultReportSettings: Required<ReportSettings> = {
   show_recommendations: true,
   show_parts: true,
   show_photos: true,
+  extra_fields: [],
+  extra_field_site_ids: [],
 }
+
+const EXTRA_FIELD_TYPES: { value: ExtraField['field_type']; label: string; icon: React.ReactNode }[] = [
+  { value: 'text',      label: 'Text',                  icon: <Type size={14} /> },
+  { value: 'time',      label: 'Time',                  icon: <Clock size={14} /> },
+  { value: 'location',  label: 'Location (Geolocation)', icon: <MapPin size={14} /> },
+  { value: 'yes_no',    label: 'Yes / No',               icon: <ToggleLeft size={14} /> },
+  { value: 'signature', label: 'Signature',              icon: <PenTool size={14} /> },
+]
 
 /* ── Component ──────────────────────────────────────── */
 export default function SettingsPage() {
@@ -106,6 +124,9 @@ export default function SettingsPage() {
     name: '', address: '', phone: '', email: '', timezone: 'Asia/Kuala_Lumpur', currency: 'MYR',
   })
   const [rs, setRs] = useState<Required<ReportSettings>>(defaultReportSettings)
+  const [sites, setSites] = useState<SiteOption[]>([])
+  const [newFieldLabel, setNewFieldLabel] = useState('')
+  const [newFieldType, setNewFieldType] = useState<ExtraField['field_type']>('text')
 
   const setU  = (k: string, v: string) => setUserForm(f => ({ ...f, [k]: v }))
   const setO  = (k: string, v: string) => setOrgForm(f => ({ ...f, [k]: v }))
@@ -114,10 +135,31 @@ export default function SettingsPage() {
   const setAL = (k: 'engineer' | 'client', v: string) =>
     setRs(f => ({ ...f, ack_labels: { ...f.ack_labels, [k]: v } }))
 
+  function addExtraField() {
+    if (!newFieldLabel.trim()) return
+    setRs(f => ({
+      ...f,
+      extra_fields: [...f.extra_fields, { id: crypto.randomUUID(), label: newFieldLabel.trim(), field_type: newFieldType }],
+    }))
+    setNewFieldLabel(''); setNewFieldType('text')
+  }
+  function removeExtraField(id: string) {
+    setRs(f => ({ ...f, extra_fields: f.extra_fields.filter(ef => ef.id !== id) }))
+  }
+  function toggleSiteAssignment(siteId: string) {
+    setRs(f => ({
+      ...f,
+      extra_field_site_ids: f.extra_field_site_ids.includes(siteId)
+        ? f.extra_field_site_ids.filter(id => id !== siteId)
+        : [...f.extra_field_site_ids, siteId],
+    }))
+  }
+
   async function load() {
-    const [orgRes, usersRes] = await Promise.all([
+    const [orgRes, usersRes, sitesRes] = await Promise.all([
       fetch('/api/settings'),
       fetch('/api/users'),
+      fetch('/api/sites'),
     ])
     const orgData: Org = await orgRes.json()
     if (orgData) {
@@ -139,10 +181,14 @@ export default function SettingsPage() {
         show_recommendations: saved_rs.show_recommendations ?? true,
         show_parts:           saved_rs.show_parts           ?? true,
         show_photos:          saved_rs.show_photos           ?? true,
+        extra_fields:         saved_rs.extra_fields          ?? [],
+        extra_field_site_ids: saved_rs.extra_field_site_ids  ?? [],
       })
     }
     const usersData = await usersRes.json()
     setUsers(Array.isArray(usersData) ? usersData : [])
+    const sitesData = await sitesRes.json()
+    setSites(Array.isArray(sitesData) ? sitesData : [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -494,6 +540,73 @@ export default function SettingsPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          </SettingsCard>
+
+          {/* ── Extra Fields (assignable to specific sites) ──── */}
+          <SettingsCard title="Extra Fields" icon={<ListPlus size={16} />}
+            subtitle="Add custom fields to the Field Service Report, then choose which sites this template applies to">
+            <div className="space-y-2">
+              {rs.extra_fields.length === 0 ? (
+                <p className="text-sm" style={{ color: 'var(--text-subtle)' }}>No extra fields yet.</p>
+              ) : rs.extra_fields.map(ef => {
+                const t = EXTRA_FIELD_TYPES.find(t => t.value === ef.field_type)
+                return (
+                  <div key={ef.id} className="flex items-center gap-3 p-3 rounded-lg border"
+                    style={{ borderColor: 'var(--border)', background: 'var(--bg-base)' }}>
+                    <span style={{ color: 'var(--color-info)' }}>{t?.icon}</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium" style={{ color: 'var(--text-base)' }}>{ef.label}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>{t?.label ?? ef.field_type}</p>
+                    </div>
+                    <button type="button" onClick={() => removeExtraField(ef.id)} style={{ color: 'var(--color-danger)' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="flex gap-2 mt-4 items-end">
+              <div className="flex-1">
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Field Name</label>
+                <Input placeholder="e.g. Roof Access Required" value={newFieldLabel} onChange={e => setNewFieldLabel(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Type</label>
+                <Select value={newFieldType} onChange={e => setNewFieldType(e.target.value as ExtraField['field_type'])}>
+                  {EXTRA_FIELD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </Select>
+              </div>
+              <button type="button" onClick={addExtraField}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium"
+                style={{ background: 'var(--color-info-bg)', color: 'var(--color-info)' }}>
+                <Plus size={14} /> Add
+              </button>
+            </div>
+
+            <div className="mt-5 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+              <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>
+                Apply this template to sites
+              </p>
+              {sites.length === 0 ? (
+                <p className="text-sm" style={{ color: 'var(--text-subtle)' }}>No sites yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {sites.map(s => {
+                    const selected = rs.extra_field_site_ids.includes(s.id)
+                    return (
+                      <button key={s.id} type="button" onClick={() => toggleSiteAssignment(s.id)}
+                        className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
+                        style={selected
+                          ? { background: 'var(--color-success-bg)', color: 'var(--color-success)', borderColor: 'var(--color-success)' }
+                          : { background: 'transparent', color: 'var(--text-subtle)', borderColor: 'var(--border)' }}>
+                        {s.name}{s.clients ? ` (${s.clients.name})` : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </SettingsCard>
 
