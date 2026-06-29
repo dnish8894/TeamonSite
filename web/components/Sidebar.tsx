@@ -6,11 +6,12 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Ticket, Building2, Users, HardHat,
   Wrench, QrCode, CalendarClock, Package, FolderKanban,
-  Settings, LogOut, CalendarRange, FileBarChart2,
+  Settings, LogOut, CalendarRange, FileBarChart2, PackageSearch, Clock4, ShieldCheck, CalendarDays, Receipt,
 } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 import { usePush } from '@/lib/usePush'
 import { Bell, BellOff } from 'lucide-react'
+import { isPathAllowed } from '@/lib/permissions'
 
 const navItems = [
   { href: '/',          icon: LayoutDashboard, label: 'Dashboard'    },
@@ -21,10 +22,16 @@ const navItems = [
   { href: '/devices',   icon: Wrench,          label: 'Devices'      },
   { href: '/engineers', icon: HardHat,         label: 'Engineers'    },
   { href: '/qr',        icon: QrCode,          label: 'QR Codes'     },
-  { href: '/pm',        icon: CalendarClock,   label: 'PM Schedules' },
+  { href: '/pm',        icon: CalendarClock,   label: 'Servicing & Schedules' },
   { href: '/parts',     icon: Package,         label: 'Inventory'    },
+  { href: '/equipment', icon: Wrench,          label: 'Equipment'    },
+  { href: '/part-requests', icon: PackageSearch, label: 'Part Requests' },
   { href: '/standby',   icon: CalendarRange,   label: 'Standby'      },
+  { href: '/attendance', icon: Clock4,         label: 'Attendance'   },
+  { href: '/leave',     icon: CalendarDays,    label: 'Leave'        },
+  { href: '/claims',    icon: Receipt,         label: 'Claims'       },
   { href: '/reports',   icon: FileBarChart2,   label: 'Reports'      },
+  { href: '/reports/dlp', icon: ShieldCheck,   label: 'DLP Tracker'  },
   { href: '/settings',  icon: Settings,        label: 'Settings'     },
 ]
 
@@ -33,6 +40,7 @@ const ROLE_COLORS: Record<string, string> = {
   manager:  'var(--color-info)',
   engineer: 'var(--color-success)',
   client:   'var(--color-warning)',
+  project:  'var(--brand-accent, #f97316)',
 }
 
 interface UserProfile { full_name: string; email: string; role: string }
@@ -75,12 +83,15 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ href, icon: Icon, label }) => {
-          const active = pathname === href || (href !== '/' && pathname.startsWith(href))
+        {navItems.filter(item => isPathAllowed(user?.role, item.href)).map(({ href, icon: Icon, label }) => {
+          // Most-specific match wins so /reports/dlp highlights only "DLP Tracker", not "Reports"
+          const matches = navItems.filter(n => n.href !== '/' && pathname.startsWith(n.href)).map(n => n.href)
+          const bestMatch = matches.sort((a, b) => b.length - a.length)[0]
+          const active = pathname === href || (href !== '/' && href === bestMatch)
           return (
             <Link key={href} href={href}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
-              style={active ? { background: '#f97316', color: '#ffffff' } : { color: 'var(--text-muted)' }}
+              style={active ? { background: 'var(--brand-accent, #f97316)', color: '#ffffff' } : { color: 'var(--text-muted)' }}
               onMouseEnter={e => {
                 if (!active) {
                   ;(e.currentTarget as HTMLElement).style.background = 'var(--border)'

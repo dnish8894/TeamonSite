@@ -322,6 +322,88 @@ export function exportSurveyExcel(form: SurveyForm, projectName = 'Project') {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// 2b.  ACS SITE SURVEY — PDF
+// ════════════════════════════════════════════════════════════════════════════
+export interface AcsSurveyForm {
+  site_name: string; site_location: string; pic_name: string; pic_no: string
+  site_type: string; job_type: string
+  no_of_doors: string; door_license: string; type_of_doors: string
+  double_leaf_doors: string; single_leaf_doors: string; type_of_reader: string; shift_patterns: string
+  no_of_controllers: string; type_of_controller: string; no_of_sub_controllers: string; type_of_sub_controller: string
+  power_supply_required: string; cabling_by_infiniteql: string; hacking_drill: string; cable_measurement: string
+  installation_termination: string; existing_fire_signal: string; drawing_layout_required: string
+  touch_up_make_good: string; type_of_touch_up: string; paint_job: string; notes: string
+  surveyed_by: string; survey_date: string; survey_time: string
+}
+
+export function exportAcsSurveyPdf(form: AcsSurveyForm, projectName = 'Project') {
+  const doc = new jsPDF()
+  addHeader(doc, 'ACS Site Survey Form', projectName)
+  let y = 30
+
+  const ensureSpace = (needed = 8) => { if (y > 285 - needed) { doc.addPage(); y = 20 } }
+  const row = (label: string, value: string) => { ensureSpace(); y = kv(doc, y, label, value) }
+
+  y = sectionTitle(doc, y, 'Site Details')
+  row('Site Name:', form.site_name)
+  row('Site Location:', form.site_location)
+  row('Person In Charge:', form.pic_name)
+  row('PIC Contact No:', form.pic_no)
+  row('Site:', form.site_type)
+  row('Type of Job:', form.job_type)
+  y += 3
+
+  ensureSpace(); y = sectionTitle(doc, y, 'Doors')
+  row('No of Doors:', form.no_of_doors)
+  row('Door License:', form.door_license)
+  row('Type of Doors:', form.type_of_doors)
+  row('Double Leaf Doors:', form.double_leaf_doors)
+  row('Single Leaf Doors:', form.single_leaf_doors)
+  row('Type of Reader:', form.type_of_reader)
+  row('Shift Patterns:', form.shift_patterns)
+  y += 3
+
+  ensureSpace(); y = sectionTitle(doc, y, 'Backend Installation Area')
+  row('No. of Controllers:', form.no_of_controllers)
+  row('Type of Controller:', form.type_of_controller)
+  row('No. of Sub-Controllers:', form.no_of_sub_controllers)
+  row('Type of Sub Controller:', form.type_of_sub_controller)
+  row('Power Supply Required:', form.power_supply_required)
+  row('Cabling by InfiniteQL:', form.cabling_by_infiniteql)
+  row('Hacking & Drill:', form.hacking_drill)
+  row('Cable Measurement:', form.cable_measurement)
+  row('Installation & Termination:', form.installation_termination)
+  row('Existing Fire Signal:', form.existing_fire_signal)
+  row('Drawing / Layout Required:', form.drawing_layout_required)
+  row('Touch-Up & Make Good:', form.touch_up_make_good)
+  row('Type of Touch Up:', form.type_of_touch_up)
+  row('Paint Job:', form.paint_job)
+  y += 3
+
+  ensureSpace(); y = sectionTitle(doc, y, 'Notes & Sign-Off')
+  if (form.notes) {
+    ensureSpace()
+    const lines = doc.splitTextToSize(form.notes, 180)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DARK)
+    doc.text(lines, 14, y); y += lines.length * 5 + 3
+  }
+  row('Site Survey Done By:', form.surveyed_by)
+  row('Date of Survey:', form.survey_date)
+  row('Time of Survey:', form.survey_time)
+  y += 4
+
+  ensureSpace(14)
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...GREY)
+  const note = doc.splitTextToSize(
+    'All information provided is accurate, and the sales quotation will be prepared based on the details collected by the site surveyor.',
+    180
+  )
+  doc.text(note, 14, y)
+
+  doc.save(`ACS_SiteSurvey_${projectName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.pdf`)
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // 3.  UAT — PDF
 // ════════════════════════════════════════════════════════════════════════════
 export interface TestItem { system: string; description: string; result: string; notes: string }

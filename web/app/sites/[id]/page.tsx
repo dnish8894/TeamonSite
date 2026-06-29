@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, MapPin, ChevronRight, Building2, Layers, CalendarRange, Edit2, Check, X } from 'lucide-react'
 import { Field, Input, Select } from '@/components/ui/Field'
 import Button from '@/components/ui/Button'
+import SiteContactsCard from '@/components/sites/SiteContactsCard'
 
 interface Device  { id: string; name: string; tag_id: string | null; device_type: string; model: string | null; is_active: boolean }
 interface System  { id: string; type: string; name: string; brand: string | null; model: string | null; location_desc: string | null; install_date: string | null; is_active: boolean; devices: Device[] }
@@ -16,6 +17,7 @@ interface Site {
   contract_type: 'dlp' | 'maintenance' | null
   contract_start: string | null
   contract_end: string | null
+  pm_classification: 'comprehensive' | 'non_comprehensive' | null
   clients: { id: string; name: string; type: string } | null
   elv_systems: System[]
   tickets: TicketRow[]
@@ -47,7 +49,7 @@ export default function SiteDetailPage() {
 
   // Contract inline edit state
   const [editingContract, setEditingContract] = useState(false)
-  const [contractForm, setContractForm]       = useState({ contract_type: '', contract_start: '', contract_end: '' })
+  const [contractForm, setContractForm]       = useState({ contract_type: '', contract_start: '', contract_end: '', pm_classification: '' })
   const [savingContract, setSavingContract]   = useState(false)
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export default function SiteDetailPage() {
       contract_type:  site.contract_type  ?? '',
       contract_start: site.contract_start ?? '',
       contract_end:   site.contract_end   ?? '',
+      pm_classification: site.pm_classification ?? '',
     })
     setEditingContract(true)
   }
@@ -144,6 +147,14 @@ export default function SiteDetailPage() {
                             : '?'}
                         </span>
                       )}
+                      {site.pm_classification && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                          style={site.pm_classification === 'comprehensive'
+                            ? { background: 'var(--color-success-bg)', color: 'var(--color-success)' }
+                            : { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>
+                          {site.pm_classification === 'comprehensive' ? 'Comprehensive' : 'Non-Comprehensive'}
+                        </span>
+                      )}
                     </>
                   ) : (
                     <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>No DLP / maintenance period set</span>
@@ -183,6 +194,16 @@ export default function SiteDetailPage() {
                           onChange={e => setContractForm(f => ({ ...f, contract_end: e.target.value }))} />
                       </Field>
                     </div>
+                  )}
+                  {contractForm.contract_type === 'maintenance' && (
+                    <Field label="Classification" hint="Comprehensive = parts covered · Non-Comprehensive = parts chargeable">
+                      <Select value={contractForm.pm_classification}
+                        onChange={e => setContractForm(f => ({ ...f, pm_classification: e.target.value }))}>
+                        <option value="">— Not set —</option>
+                        <option value="comprehensive">Comprehensive (parts covered)</option>
+                        <option value="non_comprehensive">Non-Comprehensive (parts chargeable)</option>
+                      </Select>
+                    </Field>
                   )}
                   <div className="flex gap-2">
                     <Button loading={savingContract} onClick={saveContract}>
@@ -288,8 +309,9 @@ export default function SiteDetailPage() {
           })}
         </div>
 
-        {/* Tickets */}
+        {/* Contacts + Tickets */}
         <div>
+          <SiteContactsCard siteId={id} />
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold" style={{ color: 'var(--text-base)' }}>Tickets</h2>
             <button onClick={() => router.push('/tickets')} className="text-xs" style={{ color: 'var(--color-info)' }}>

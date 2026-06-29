@@ -4,12 +4,26 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { MapPin, Cpu, Wrench, AlertTriangle, CheckCircle } from 'lucide-react'
 
+interface IntakeQuestion { id: string; label: string; type: 'choice' | 'text'; options: string[] }
 interface ScanData {
   tier: string
   label: string
   sublabel: string
   details: Record<string, string>
   isEngineer: boolean
+  system_type?: string | null
+  intake_questions?: Record<string, IntakeQuestion[]>
+  systems?: { id: string; name: string; type: string }[]
+}
+
+const URGENCY_OPTIONS: { label: string; priority: string }[] = [
+  { label: 'Critical — not working / security risk', priority: 'P2' },
+  { label: 'Affecting daily use',                     priority: 'P3' },
+  { label: 'Minor / intermittent',                    priority: 'P4' },
+]
+const SYS_LABEL: Record<string, string> = {
+  cctv: 'CCTV', access_control: 'Access Control', pa: 'Public Address / Intercom',
+  av: 'Audio Visual / VMS', structured_cabling: 'Structured Cabling', bms: 'BMS',
 }
 
 export default function ScanPage() {
@@ -18,6 +32,9 @@ export default function ScanPage() {
   const [loading, setLoading] = useState(true)
   const [submitted, setSubmitted] = useState(false)
   const [form, setForm] = useState({ name: '', description: '' })
+  const [selectedSystem, setSelectedSystem] = useState('')   // for site QR
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [urgency, setUrgency] = useState('')
 
   useEffect(() => {
     fetch(`/api/scan/${tier}/${id}`)
@@ -25,19 +42,41 @@ export default function ScanPage() {
       .then(d => { setData(d); setLoading(false) })
   }, [tier, id])
 
+  // Which system type's questionnaire to show
+  const activeType = tier === 'site' ? selectedSystem : (data?.system_type ?? '')
+  const questions = (data?.intake_questions?.[activeType] ?? [])
+
   async function submitFault(e: React.FormEvent) {
     e.preventDefault()
+
+    // Compile a readable description from the structured answers
+    const answeredLines = questions
+      .filter(q => answers[q.id]?.trim())
+      .map(q => `${q.label}: ${answers[q.id]}`)
+    if (urgency) answeredLines.push(`Urgency: ${urgency}`)
+    const compiled = [...answeredLines, form.description.trim() ? `Details: ${form.description.trim()}` : '']
+      .filter(Boolean).join('\n')
+
+    const priority = URGENCY_OPTIONS.find(u => u.label === urgency)?.priority ?? 'P3'
+    const intakeAnswers = {
+      system_type: activeType || null,
+      urgency: urgency || null,
+      answers: questions.filter(q => answers[q.id]?.trim()).map(q => ({ label: q.label, value: answers[q.id] })),
+    }
+
     await fetch('/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: form.description.slice(0, 80) || 'Fault reported via QR',
-        description: form.description,
+        title: (answeredLines[0] ?? form.description).slice(0, 80) || 'Fault reported via QR',
+        description: compiled || 'Fault reported via QR',
         reporter_name: form.name,
         site_id: data?.details?.site_id,
         device_id: tier === 'device' ? id : null,
+        system_id: tier === 'system' ? id : null,
         type: 'breakdown',
-        priority: 'P3',
+        priority,
+        intake_answers: intakeAnswers,
         source_qr_tier: tier,
         source_qr_id: id,
       }),
@@ -126,17 +165,77 @@ export default function ScanPage() {
               <input
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                 placeholder="Ahmad bin Ali"
+                maxLength={120}
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               />
             </div>
+            {/* System picker — only for site-level QR */}
+            {tier === 'site' && (data.systems?.length ?? 0) > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Which system is affected? <span className="text-red-500">*</span></label>
+                <select required value={selectedSystem} onChange={e => { setSelectedSystem(e.target.value); setAnswers({}) }}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+                  <option value="">— Select system —</option>
+                  {data.systems!.map(s => (
+                    <option key={s.id} value={s.type}>{s.name || (SYS_LABEL[s.type] ?? s.type)}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Dynamic per-system questions */}
+            {questions.map(q => (
+              <div key={q.id}>
+                <label className="block text-sm font-medium text-gray-600 mb-1">{q.label}</label>
+                {q.type === 'choice' ? (
+                  <div className="flex flex-wrap gap-2">
+                    {q.options.filter(Boolean).map(opt => (
+                      <button key={opt} type="button"
+                        onClick={() => setAnswers(a => ({ ...a, [q.id]: a[q.id] === opt ? '' : opt }))}
+                        className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
+                        style={answers[q.id] === opt
+                          ? { background: '#f97316', color: '#fff', borderColor: '#f97316' }
+                          : { background: '#fff', color: '#4b5563', borderColor: '#e5e7eb' }}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <input
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                    maxLength={200} value={answers[q.id] ?? ''}
+                    onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))}
+                  />
+                )}
+              </div>
+            ))}
+
+            {/* Urgency — always shown */}
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Describe the issue <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-gray-600 mb-1">How urgent is it?</label>
+              <div className="flex flex-col gap-2">
+                {URGENCY_OPTIONS.map(u => (
+                  <button key={u.label} type="button"
+                    onClick={() => setUrgency(urgency === u.label ? '' : u.label)}
+                    className="px-3 py-2 rounded-lg text-sm font-medium border text-left transition-all"
+                    style={urgency === u.label
+                      ? { background: '#f97316', color: '#fff', borderColor: '#f97316' }
+                      : { background: '#fff', color: '#4b5563', borderColor: '#e5e7eb' }}>
+                    {u.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-1">Anything else? {questions.length === 0 && <span className="text-red-500">*</span>}</label>
               <textarea
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none"
-                rows={4}
-                placeholder="e.g. Camera screen is black, no image showing..."
-                required
+                rows={3}
+                placeholder="Any other details that might help..."
+                required={questions.length === 0}
+                maxLength={4000}
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               />

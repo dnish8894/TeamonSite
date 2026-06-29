@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pushToUser, engineerUserId, pushToGroups } from '@/lib/push'
+import { emailClientAssigned, emailClientCompleted } from '@/lib/clientEmail'
 
 export async function GET(
   _req: NextRequest,
@@ -11,20 +12,21 @@ export async function GET(
     .from('tickets')
     .select(`
       id, ticket_no, title, description, type, priority, status,
-      is_chargeable, source_qr_tier, source_qr_id,
+      is_chargeable, quotation_no, source_qr_tier, source_qr_id,
       reporter_name, reporter_phone, reporter_email,
       sla_response_due, sla_resolve_due, sla_response_met, sla_resolve_met,
       assigned_at, acknowledged_at, started_at, resolved_at, closed_at, eta_at,
       work_status, work_seconds, work_last_resume_at, work_started_at, work_completed_at,
       created_at, updated_at,
-      sites ( id, name, address, city, state, site_contact, site_phone, clients ( name, type ) ),
+      sites ( id, name, address, city, state, site_contact, site_phone, pm_classification, contract_type, clients ( name, type ) ),
       elv_systems ( id, name, type ),
-      devices ( id, name, tag_id, device_type, model, location_desc, floor ),
+      devices ( id, name, tag_id, device_type, model, location_desc, floor, under_contract ),
       engineers (
         id,
         users ( full_name, phone, email )
       ),
-      ticket_groups ( group_id, engineer_groups ( id, name ) )
+      ticket_groups ( group_id, engineer_groups ( id, name ) ),
+      created_by_user:created_by ( full_name )
     `)
     .eq('id', id)
     .single()
@@ -45,7 +47,7 @@ export async function PATCH(
   // Fetch current ticket state for comparison
   const { data: current } = await supabaseAdmin
     .from('tickets')
-    .select('status, assigned_to, ticket_no, title, reporter_email, reporter_name, eta_at, sites(name)')
+    .select('status, assigned_to, ticket_no, title, reporter_email, reporter_name, eta_at, device_id, sites(name)')
     .eq('id', id)
     .single()
 
@@ -63,6 +65,19 @@ export async function PATCH(
   const ticketNo    = current?.ticket_no ?? id
   const ticketTitle = current?.title ?? 'Ticket'
   const siteName    = (current?.sites as unknown as { name: string } | null)?.name ?? ''
+
+  // Stamp device's Last Service Date when the ticket is resolved/closed.
+  if ((body.status === 'resolved' || body.status === 'closed') && current?.status !== body.status) {
+    if (current?.device_id) {
+      await supabaseAdmin.from('devices')
+        .update({ last_service_date: new Date().toISOString().slice(0, 10) })
+        .eq('id', current.device_id)
+    }
+    // Notify the client the job is done / technician left site
+    if (current?.reporter_email) {
+      await emailClientCompleted(current.reporter_email, ticketNo, siteName).catch(() => {})
+    }
+  }
 
   // ── Group assignment ───────────────────────────────────────────────────────
   if (Array.isArray(groupIds)) {
@@ -88,6 +103,13 @@ export async function PATCH(
         url:   `/tickets/${id}`,
         tag:   `ticket-assign-${id}`,
       })
+    }
+    // Notify the client a technician has been assigned
+    if (current?.reporter_email) {
+      const { data: eng } = await supabaseAdmin
+        .from('engineers').select('users ( full_name )').eq('id', body.assigned_to).single()
+      const engName = (eng?.users as unknown as { full_name: string } | null)?.full_name ?? ''
+      await emailClientAssigned(current.reporter_email, ticketNo, engName, siteName).catch(() => {})
     }
   }
 

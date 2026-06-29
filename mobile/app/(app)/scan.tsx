@@ -24,8 +24,9 @@ export default function ScanScreen() {
       // Expected QR formats from web app:
       // "ticket:<id>"     → go to ticket detail
       // "device:<id>"     → show device info + open tickets
+      // "system:<id>"     → show system info + open tickets
       // "site:<id>"       → show site tickets
-      // Raw UUID or URL containing these patterns
+      // Raw UUID or URL containing these patterns (e.g. http://host/scan/<tier>/<id>)
       let kind: string | null = null
       let targetId: string | null = null
 
@@ -35,11 +36,13 @@ export default function ScanScreen() {
         kind = 'ticket'; targetId = trimmed.replace('ticket:', '')
       } else if (trimmed.startsWith('device:')) {
         kind = 'device'; targetId = trimmed.replace('device:', '')
+      } else if (trimmed.startsWith('system:')) {
+        kind = 'system'; targetId = trimmed.replace('system:', '')
       } else if (trimmed.startsWith('site:')) {
         kind = 'site'; targetId = trimmed.replace('site:', '')
       } else {
-        // Try to match URL pattern: /scan/device/<id> or /scan/ticket/<id>
-        const urlMatch = trimmed.match(/\/(ticket|device|site)\/([0-9a-f-]{36})/i)
+        // Try to match URL pattern: /scan/device/<id>, /scan/system/<id>, etc.
+        const urlMatch = trimmed.match(/\/(ticket|device|system|site)\/([0-9a-f-]{36})/i)
         if (urlMatch) { kind = urlMatch[1]; targetId = urlMatch[2] }
       }
 
@@ -67,22 +70,72 @@ export default function ScanScreen() {
           .order('created_at', { ascending: false })
           .limit(5)
 
+        const { data: dev } = await supabase
+          .from('devices')
+          .select('name,tag_id,device_type,system_id,elv_systems(site_id)')
+          .eq('id', targetId)
+          .single()
+        const deviceSiteId = (dev?.elv_systems as unknown as { site_id: string } | null)?.site_id ?? null
+        const createTicket = () => router.push({
+          pathname: '/(app)/tickets/new',
+          params: { site_id: deviceSiteId ?? '', system_id: dev?.system_id ?? '', device_id: targetId },
+        })
+
         if (tickets && tickets.length > 0) {
-          const { data: dev } = await supabase.from('devices').select('name,tag_id').eq('id', targetId).single()
           Alert.alert(
             `Device: ${dev?.name ?? targetId}`,
             `${tickets.length} active ticket(s):\n${tickets.map(t => `• ${t.ticket_no} — ${t.title}`).join('\n')}`,
             [
               { text: 'View First Ticket', onPress: () => router.push(`/(app)/tickets/${tickets[0].id}`) },
+              { text: '+ New Ticket', onPress: createTicket },
               { text: 'Cancel', style: 'cancel', onPress: () => { setScanned(false); cooldown.current = false } },
             ]
           )
         } else {
-          const { data: dev } = await supabase.from('devices').select('name,tag_id,device_type').eq('id', targetId).single()
           Alert.alert(
             `Device: ${dev?.name ?? 'Unknown'}`,
             `Tag: ${dev?.tag_id ?? '—'}\nType: ${dev?.device_type ?? '—'}\n\nNo active tickets.`,
-            [{ text: 'OK', onPress: () => { setScanned(false); cooldown.current = false } }]
+            [
+              { text: '+ New Ticket', onPress: createTicket },
+              { text: 'OK', style: 'cancel', onPress: () => { setScanned(false); cooldown.current = false } },
+            ]
+          )
+        }
+
+      } else if (kind === 'system') {
+        // Look up open tickets for this system
+        const { data: tickets } = await supabase
+          .from('tickets')
+          .select('id,ticket_no,title,status')
+          .eq('system_id', targetId)
+          .in('status', ['open','assigned','in_progress','pending_parts','pending_client'])
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        const { data: sys } = await supabase.from('elv_systems').select('name,type,site_id').eq('id', targetId).single()
+        const createTicket = () => router.push({
+          pathname: '/(app)/tickets/new',
+          params: { site_id: sys?.site_id ?? '', system_id: targetId },
+        })
+
+        if (tickets && tickets.length > 0) {
+          Alert.alert(
+            `System: ${sys?.name ?? sys?.type ?? targetId}`,
+            `${tickets.length} active ticket(s):\n${tickets.map(t => `• ${t.ticket_no} — ${t.title}`).join('\n')}`,
+            [
+              { text: 'View First Ticket', onPress: () => router.push(`/(app)/tickets/${tickets[0].id}`) },
+              { text: '+ New Ticket', onPress: createTicket },
+              { text: 'Cancel', style: 'cancel', onPress: () => { setScanned(false); cooldown.current = false } },
+            ]
+          )
+        } else {
+          Alert.alert(
+            `System: ${sys?.name ?? 'Unknown'}`,
+            `Type: ${sys?.type ?? '—'}\n\nNo active tickets.`,
+            [
+              { text: '+ New Ticket', onPress: createTicket },
+              { text: 'OK', style: 'cancel', onPress: () => { setScanned(false); cooldown.current = false } },
+            ]
           )
         }
 
@@ -95,6 +148,10 @@ export default function ScanScreen() {
           .limit(5)
 
         const { data: site } = await supabase.from('sites').select('name').eq('id', targetId).single()
+        const createTicket = () => router.push({
+          pathname: '/(app)/tickets/new',
+          params: { site_id: targetId },
+        })
         Alert.alert(
           `Site: ${site?.name ?? targetId}`,
           tickets && tickets.length > 0
@@ -104,6 +161,7 @@ export default function ScanScreen() {
             ...(tickets && tickets.length > 0
               ? [{ text: 'View First Ticket', onPress: () => router.push(`/(app)/tickets/${tickets[0].id}`) }]
               : []),
+            { text: '+ New Ticket', onPress: createTicket },
             { text: 'OK', style: 'cancel', onPress: () => { setScanned(false); cooldown.current = false } },
           ]
         )
@@ -145,7 +203,7 @@ export default function ScanScreen() {
         {/* Overlay */}
         <SafeAreaView style={styles.overlay}>
           <Text style={styles.scanTitle}>Scan QR Code</Text>
-          <Text style={styles.scanSub}>Point at a device, ticket or site QR code</Text>
+          <Text style={styles.scanSub}>Point at a device, system, ticket or site QR code</Text>
 
           {/* Viewfinder frame */}
           <View style={styles.frameContainer}>

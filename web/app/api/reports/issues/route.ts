@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
       id, ticket_no, title, type, priority, status,
       created_at, resolved_at, closed_at,
       sites ( id, name, city, state ),
-      elv_systems ( id, name, type )
+      elv_systems ( id, name, type ),
+      devices ( id, name, tag_id )
     `)
     .gte('created_at', from + 'T00:00:00Z')
     .lte('created_at', to   + 'T23:59:59Z')

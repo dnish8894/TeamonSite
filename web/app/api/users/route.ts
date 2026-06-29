@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { setUserTeams } from '@/lib/teams'
 
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from('users')
-    .select('id, full_name, email, phone, role, is_active, last_login_at, created_at')
+    .select('id, full_name, email, phone, role, is_active, last_login_at, created_at, user_teams ( team )')
     .order('full_name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  // Flatten teams to a string[] per user
+  const rows = (data ?? []).map(u => ({
+    ...u,
+    teams: ((u as { user_teams?: { team: string }[] }).user_teams ?? []).map(t => t.team),
+  }))
+  return NextResponse.json(rows)
 }
 
 export async function POST(req: NextRequest) {
@@ -29,8 +35,11 @@ export async function POST(req: NextRequest) {
   })
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 })
 
-  // 2 — Create users table entry
+  // 2 — Create users table entry with the SAME id as the auth account.
+  // RLS policies resolve organisation via `users.id = auth.uid()`, so these must match
+  // or the user will see empty data everywhere once they're outside the service-role context (e.g. mobile app).
   const { error: dbErr } = await supabaseAdmin.from('users').insert({
+    id: authUser.user!.id,
     organisation_id: org.id,
     full_name: body.full_name.trim(),
     email:     body.email.trim(),
@@ -43,6 +52,8 @@ export async function POST(req: NextRequest) {
     if (authUser?.user?.id) await supabaseAdmin.auth.admin.deleteUser(authUser.user.id)
     return NextResponse.json({ error: dbErr.message }, { status: 500 })
   }
+
+  if (Array.isArray(body.teams)) await setUserTeams(authUser.user!.id, body.teams)
 
   return NextResponse.json({ ok: true })
 }

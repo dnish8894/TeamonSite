@@ -5,11 +5,14 @@ import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, UserPlus, X, ChevronDown } from 'lucide-react'
 import { Select } from '@/components/ui/Field'
 import Button from '@/components/ui/Button'
-import SiteSurveyTab from '@/components/projects/SiteSurveyTab'
+import AcsSurveyTab from '@/components/projects/AcsSurveyTab'
+import ProjectDevicesCard from '@/components/projects/ProjectDevicesCard'
 import TncTab from '@/components/projects/TncTab'
 import UatTab from '@/components/projects/UatTab'
 import MinutesTab from '@/components/projects/MinutesTab'
 import ProgressTab from '@/components/projects/ProgressTab'
+import PartRequestModal from '@/components/PartRequestModal'
+import { PackagePlus } from 'lucide-react'
 
 interface Project {
   id: string; project_no: string; name: string; status: string
@@ -62,6 +65,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading]       = useState(true)
   const [saving, setSaving]         = useState(false)
   const [newStatus, setNewStatus]   = useState('')
+  const [showPartRequest, setShowPartRequest] = useState(false)
 
   // Team assignments
   const [assignments, setAssignments] = useState<Assignment[]>([])
@@ -167,6 +171,11 @@ export default function ProjectDetailPage() {
         </div>
         {/* Status updater */}
         <div className="flex items-center gap-2">
+          <button onClick={() => setShowPartRequest(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium"
+            style={{ background: 'var(--color-info-bg)', color: 'var(--color-info)' }}>
+            <PackagePlus size={15} /> Request Part
+          </button>
           <Select value={newStatus} onChange={e => setNewStatus(e.target.value)}
             style={{ minWidth: 140 }}>
             {Object.entries(STATUS_STYLE).map(([k, v]) => (
@@ -176,6 +185,10 @@ export default function ProjectDetailPage() {
           <Button loading={saving} onClick={saveStatus}>Update</Button>
         </div>
       </div>
+
+      {showPartRequest && (
+        <PartRequestModal projectId={id} onClose={() => setShowPartRequest(false)} />
+      )}
 
       {/* Project meta row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -344,6 +357,9 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
+          {/* Project devices */}
+          <ProjectDevicesCard projectId={id} />
+
           {/* Next steps hint */}
           <div className="p-4 rounded-lg" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
             <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Next Steps</p>
@@ -356,7 +372,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
-      {tab === 'survey'  && <SiteSurveyTab projectId={id} projectName={project.name} />}
+      {tab === 'survey'  && <AcsSurveyTab projectId={id} projectName={project.name} />}
       {tab === 'tnc'     && <TncTab        projectId={id} projectName={project.name} />}
       {tab === 'uat'     && <UatTab        projectId={id} projectName={project.name} />}
       {tab === 'minutes'  && <MinutesTab    projectId={id} projectName={project.name} />}

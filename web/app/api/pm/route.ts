@@ -8,7 +8,9 @@ export async function GET() {
       id, name, ticket_type, interval_days, last_run_at, next_due_at, is_active,
       sites ( id, name, clients ( name ) ),
       elv_systems ( id, name, type ),
-      engineers ( id, users ( full_name ) )
+      engineers ( id, users ( full_name ) ),
+      pm_schedule_devices ( device_id, devices ( id, name, tag_id ) ),
+      pm_reports ( id, visit_date, status, created_at, engineers ( users ( full_name ) ) )
     `)
     .order('next_due_at', { ascending: true })
 
@@ -26,7 +28,7 @@ export async function POST(req: NextRequest) {
   const nextDue   = new Date(startDate)
   nextDue.setDate(nextDue.getDate() + (body.interval_days ?? 90))
 
-  const { error } = await supabaseAdmin.from('pm_schedules').insert({
+  const { data: created, error } = await supabaseAdmin.from('pm_schedules').insert({
     site_id:      body.site_id,
     system_id:    body.system_id    || null,
     contract_id:  body.contract_id  || null,
@@ -36,8 +38,17 @@ export async function POST(req: NextRequest) {
     interval_days: body.interval_days || 90,
     next_due_at:  nextDue.toISOString(),
     is_active:    true,
-  })
+  }).select('id').single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Pin covered devices (optional — empty = whole system)
+  const deviceIds: string[] = Array.isArray(body.device_ids) ? body.device_ids : []
+  if (created && deviceIds.length > 0) {
+    await supabaseAdmin.from('pm_schedule_devices').insert(
+      deviceIds.map(device_id => ({ schedule_id: created.id, device_id }))
+    )
+  }
+
   return NextResponse.json({ ok: true })
 }

@@ -1,11 +1,17 @@
+import { useEffect } from 'react'
 import { Tabs } from 'expo-router'
 import { View, Text, StyleSheet } from 'react-native'
+import { supabase } from '@/lib/supabase'
+import { registerForPushNotificationsAsync } from '@/lib/notifications'
 
 function TabIcon({ name, focused, label }: { name: string; focused: boolean; label: string }) {
   const icons: Record<string, string> = {
     index:    focused ? '🎫' : '🎫',
     scan:     '📷',
     schedule: '📅',
+    projects: '📁',
+    attendance: '📍',
+    servicing: '🔧',
     profile:  '👤',
   }
   return (
@@ -17,6 +23,25 @@ function TabIcon({ name, focused, label }: { name: string; focused: boolean; lab
 }
 
 export default function AppLayout() {
+  useEffect(() => {
+    let cancelled = false
+    async function register() {
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user
+      if (!user?.email || cancelled) return
+      const { data: profile } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', user.email)
+        .single()
+      if (profile?.id && !cancelled) {
+        await registerForPushNotificationsAsync(profile.id)
+      }
+    }
+    register()
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <Tabs
       screenOptions={{
@@ -48,6 +73,27 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="projects"
+        options={{
+          title: 'Projects',
+          tabBarIcon: ({ focused }) => <TabIcon name="projects" focused={focused} label="Projects" />,
+        }}
+      />
+      <Tabs.Screen
+        name="attendance"
+        options={{
+          title: 'Attendance',
+          tabBarIcon: ({ focused }) => <TabIcon name="attendance" focused={focused} label="Attendance" />,
+        }}
+      />
+      <Tabs.Screen
+        name="servicing"
+        options={{
+          title: 'Servicing',
+          tabBarIcon: ({ focused }) => <TabIcon name="servicing" focused={focused} label="Servicing" />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
@@ -56,6 +102,15 @@ export default function AppLayout() {
       />
       {/* Hidden — only navigated to */}
       <Tabs.Screen name="tickets/[id]" options={{ href: null }} />
+      <Tabs.Screen name="tickets/new" options={{ href: null }} />
+      <Tabs.Screen name="projects/[id]" options={{ href: null }} />
+      <Tabs.Screen name="projects/new" options={{ href: null }} />
+      <Tabs.Screen name="projects/[id]/survey" options={{ href: null }} />
+      <Tabs.Screen name="leave" options={{ href: null }} />
+      <Tabs.Screen name="claims" options={{ href: null }} />
+      <Tabs.Screen name="equipment" options={{ href: null }} />
+      <Tabs.Screen name="bookings" options={{ href: null }} />
+      <Tabs.Screen name="servicing/[id]" options={{ href: null }} />
     </Tabs>
   )
 }

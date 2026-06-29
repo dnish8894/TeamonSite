@@ -17,18 +17,20 @@ import { generateJobReportDocx } from '@/lib/generateJobReportDocx'
 interface Ticket {
   id: string; ticket_no: string; title: string; description: string | null
   type: string; priority: string; status: string; is_chargeable: boolean
+  quotation_no: string | null
   reporter_name: string | null; reporter_phone: string | null
   sla_resolve_due: string | null; sla_response_due: string | null
   created_at: string; resolved_at: string | null
   source_qr_tier: string | null
-  sites: { id: string; name: string; address: string | null; city: string | null; site_contact: string | null; site_phone: string | null; clients: { name: string; type: string } | null } | null
+  sites: { id: string; name: string; address: string | null; city: string | null; site_contact: string | null; site_phone: string | null; pm_classification: 'comprehensive' | 'non_comprehensive' | null; contract_type: string | null; clients: { name: string; type: string } | null } | null
   elv_systems: { id: string; name: string; type: string } | null
-  devices: { id: string; name: string; tag_id: string | null; device_type: string; model: string | null; location_desc: string | null; floor: number | null } | null
+  devices: { id: string; name: string; tag_id: string | null; device_type: string; model: string | null; location_desc: string | null; floor: number | null; under_contract?: boolean } | null
   engineers: { id: string; users: { full_name: string; phone: string | null } | null } | null
   work_status: 'not_started' | 'in_progress' | 'paused' | 'completed'
   work_seconds: number
   work_last_resume_at: string | null
   ticket_groups: { group_id: string; engineer_groups: { id: string; name: string } | null }[]
+  created_by_user: { full_name: string } | null
 }
 interface Group { id: string; name: string }
 interface Activity {
@@ -78,6 +80,9 @@ export default function TicketDetailPage() {
   const [assignId, setAssignId]   = useState('')
   const [groupIds, setGroupIds]   = useState<string[]>([])
   const [newStatus, setNewStatus] = useState('')
+  const [quotationNo, setQuotationNo] = useState('')
+  const [quoteSaving, setQuoteSaving] = useState(false)
+  const [quoteSaved, setQuoteSaved]   = useState(false)
   const [showEta, setShowEta]     = useState(false)
   const [etaDate, setEtaDate]     = useState('')
   const [etaTime, setEtaTime]     = useState('')
@@ -101,7 +106,18 @@ export default function TicketDetailPage() {
     setAssignId(t?.engineers?.id ?? '')
     setGroupIds((t?.ticket_groups ?? []).map((g: { group_id: string }) => g.group_id))
     setNewStatus(t?.status ?? '')
+    setQuotationNo(t?.quotation_no ?? '')
     setLoading(false)
+  }
+
+  async function saveQuotation() {
+    setQuoteSaving(true)
+    await fetch(`/api/tickets/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quotation_no: quotationNo.trim() || null }),
+    })
+    setQuoteSaving(false); setQuoteSaved(true); setTimeout(() => setQuoteSaved(false), 2500)
   }
 
   useEffect(() => { load() }, [id])
@@ -276,6 +292,7 @@ export default function TicketDetailPage() {
             ) : null}
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-subtle)' }}>
               Created {new Date(ticket.created_at).toLocaleDateString('en-MY', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+              {ticket.created_by_user?.full_name && ` by ${ticket.created_by_user.full_name}`}
             </p>
           </div>
         </div>
@@ -314,6 +331,39 @@ export default function TicketDetailPage() {
                 </div>
               </div>
             )}
+            {ticket.sites?.contract_type === 'maintenance' && ticket.sites.pm_classification && (
+              <div className="pt-2 border-t flex items-center gap-2 text-xs" style={{ borderColor: 'var(--border)' }}>
+                <span className="font-medium px-2 py-0.5 rounded-full"
+                  style={ticket.sites.pm_classification === 'comprehensive'
+                    ? { background: 'var(--color-success-bg)', color: 'var(--color-success)' }
+                    : { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>
+                  {ticket.sites.pm_classification === 'comprehensive' ? 'Comprehensive — parts covered' : 'Non-Comprehensive — parts chargeable'}
+                </span>
+                {ticket.devices && (
+                  <span style={{ color: 'var(--text-subtle)' }}>
+                    {ticket.devices.under_contract ? 'Device under contract' : 'Device NOT under contract'}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Quotation # */}
+          <div className="rounded-xl border p-5" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+            <h2 className="text-sm font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-subtle)' }}>Quotation No.</h2>
+            <div className="flex items-center gap-2">
+              <input
+                value={quotationNo}
+                onChange={e => setQuotationNo(e.target.value)}
+                placeholder="e.g. QT-2026-0142"
+                className="flex-1 px-3 py-2 rounded-lg text-sm border outline-none"
+                style={{ background: 'var(--bg-base)', color: 'var(--text-base)', borderColor: 'var(--border)' }}
+              />
+              <Button onClick={saveQuotation} loading={quoteSaving}>
+                {quoteSaved ? <span className="flex items-center gap-1.5"><CheckCircle size={14}/> Saved</span> : 'Save'}
+              </Button>
+            </div>
+            <p className="text-xs mt-2" style={{ color: 'var(--text-subtle)' }}>For chargeable work / part replacement quotes.</p>
           </div>
 
           {/* Reporter */}
@@ -338,6 +388,7 @@ export default function TicketDetailPage() {
             <div className="flex gap-3 mb-5">
               <textarea
                 rows={2}
+                maxLength={2000}
                 className="flex-1 rounded-lg px-3 py-2 text-sm border outline-none resize-none"
                 style={{ background: 'var(--bg-base)', color: 'var(--text-base)', borderColor: 'var(--border)' }}
                 placeholder="Add a note or update..."

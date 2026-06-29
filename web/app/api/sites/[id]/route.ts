@@ -8,11 +8,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .select(`
       id, name, address, postcode, city, state, lat, lng, floors,
       site_contact, site_phone, access_notes, is_active, created_at,
-      contract_type, contract_start, contract_end,
+      contract_type, contract_start, contract_end, pm_classification,
       clients ( id, name, type ),
       elv_systems (
         id, type, name, brand, model, location_desc, install_date, is_active,
-        devices ( id, name, tag_id, device_type, model, is_active )
+        devices ( id, name, tag_id, device_type, model, is_active, under_contract )
       ),
       tickets ( id, ticket_no, title, status, priority, created_at )
     `)
@@ -29,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const allowed = [
     'name', 'address', 'postcode', 'city', 'state',
     'site_contact', 'site_phone', 'access_notes', 'is_active',
-    'contract_type', 'contract_start', 'contract_end',
+    'contract_type', 'contract_start', 'contract_end', 'pm_classification',
   ]
   const update: Record<string, unknown> = {}
   for (const key of allowed) {

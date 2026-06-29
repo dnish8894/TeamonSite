@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Ticket, Building2, Users, AlertTriangle,
-  CalendarClock, Package, ArrowRight, TrendingUp,
+  CalendarClock, Package, ArrowRight, TrendingUp, Clock4, MapPin,
 } from 'lucide-react'
 import {
   AreaChart, Area,
@@ -28,6 +28,47 @@ interface RecentTicket {
   status: string; priority: string; created_at: string
   sites: { name: string } | null
   engineers: { users: { full_name: string } | null } | null
+}
+interface AttendanceRow {
+  id: string
+  check_in_at: string
+  check_out_at: string | null
+  site_name: string | null
+  engineers: { id: string; users: { full_name: string } | null } | null
+  sites: { name: string } | null
+}
+interface EngineerAttendanceSummary {
+  engineerId: string
+  name: string
+  firstCheckIn: string
+  lastCheckOut: string | null
+  site: string
+  onSite: boolean
+}
+
+function summarizeAttendance(rows: AttendanceRow[]): EngineerAttendanceSummary[] {
+  const byEngineer = new Map<string, AttendanceRow[]>()
+  for (const r of rows) {
+    const id = r.engineers?.id
+    if (!id) continue
+    if (!byEngineer.has(id)) byEngineer.set(id, [])
+    byEngineer.get(id)!.push(r)
+  }
+  const summaries: EngineerAttendanceSummary[] = []
+  for (const [engineerId, entries] of byEngineer) {
+    const sorted = [...entries].sort((a, b) => new Date(a.check_in_at).getTime() - new Date(b.check_in_at).getTime())
+    const first = sorted[0]
+    const last = sorted[sorted.length - 1]
+    summaries.push({
+      engineerId,
+      name: first.engineers?.users?.full_name ?? '—',
+      firstCheckIn: first.check_in_at,
+      lastCheckOut: last.check_out_at,
+      site: last.sites?.name ?? last.site_name ?? '—',
+      onSite: !last.check_out_at,
+    })
+  }
+  return summaries.sort((a, b) => new Date(a.firstCheckIn).getTime() - new Date(b.firstCheckIn).getTime())
 }
 
 /* ── Colour helpers ─────────────────────────────────── */
@@ -73,9 +114,17 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 export default function DashboardPage() {
   const [stats, setStats]   = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceRow[]>([])
+  const attendanceSummary = summarizeAttendance(todayAttendance)
 
   useEffect(() => {
     fetch('/api/stats').then(r => r.json()).then(d => { setStats(d); setLoading(false) })
+
+    const start = new Date(); start.setHours(0, 0, 0, 0)
+    const end = new Date(start); end.setDate(end.getDate() + 1)
+    fetch(`/api/attendance?from=${start.toISOString()}&to=${end.toISOString()}`)
+      .then(r => r.json())
+      .then(d => setTodayAttendance(Array.isArray(d) ? d : []))
   }, [])
 
   const cards = stats ? [
@@ -116,6 +165,61 @@ export default function DashboardPage() {
                 </div>
               </Link>
             ))}
+          </div>
+
+          {/* ── Today's Attendance ───────────────────────── */}
+          <div className="rounded-xl border" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-2">
+                <Clock4 size={16} style={{ color: 'var(--color-success)' }} />
+                <h2 className="font-semibold text-sm" style={{ color: 'var(--text-base)' }}>Today's Attendance</h2>
+              </div>
+              <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-muted)' }}>
+                <span><strong style={{ color: 'var(--text-base)' }}>{attendanceSummary.length}</strong> checked in today</span>
+                <span><strong style={{ color: 'var(--color-success)' }}>{attendanceSummary.filter(a => a.onSite).length}</strong> currently on-site</span>
+              </div>
+              <Link href="/attendance" className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--color-info)' }}>
+                View all <ArrowRight size={12} />
+              </Link>
+            </div>
+            {attendanceSummary.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm" style={{ color: 'var(--text-subtle)' }}>No check-ins yet today.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Engineer', 'Site', 'First Check-In', 'Last Check-Out', 'Status'].map(h => (
+                        <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-subtle)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendanceSummary.map(a => (
+                      <tr key={a.engineerId} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--text-base)' }}>{a.name}</td>
+                        <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          <span className="flex items-center gap-1"><MapPin size={11} /> {a.site}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(a.firstCheckIn).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {a.lastCheckOut ? new Date(a.lastCheckOut).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {a.onSite ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>On-Site</span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--border)', color: 'var(--text-subtle)' }}>Checked Out</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* ── Row 2: Ticket Trend + Status Pie ─────────── */}

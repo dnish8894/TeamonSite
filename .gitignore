@@ -37,3 +37,4 @@ supabase/.temp/
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+Key.env.txt

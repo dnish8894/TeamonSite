@@ -262,6 +262,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
           <div className="mt-3">
             <Textarea
               rows={4}
+              maxLength={4000}
               placeholder="Describe what was found on-site. Include device condition, error codes, visual observations..."
               value={form.findings}
               onChange={e => set('findings', e.target.value)}
@@ -276,6 +277,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
             <Textarea
               rows={3}
               placeholder="What caused the fault? e.g. Power surge damaged NVR HDD, Camera lens fogged due to moisture..."
+              maxLength={4000}
               value={form.root_cause}
               onChange={e => set('root_cause', e.target.value)}
             />
@@ -288,6 +290,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
           <div className="mt-3">
             <Textarea
               rows={4}
+              maxLength={4000}
               placeholder="What did you do to fix the issue? e.g. Replaced HDD, reconfigured NVR channels, cleaned camera lens..."
               value={form.work_done}
               onChange={e => set('work_done', e.target.value)}
@@ -301,6 +304,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
           <div className="mt-3">
             <Textarea
               rows={3}
+              maxLength={4000}
               placeholder="Any follow-up required? Parts to order, further inspection needed, client action items..."
               value={form.recommendation}
               onChange={e => set('recommendation', e.target.value)}
@@ -341,7 +345,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
                     <td className="px-2 py-1.5">
                       <input className="w-full bg-transparent text-sm outline-none"
                         style={{ color: 'var(--text-base)' }}
-                        placeholder="e.g. Hard Disk Drive"
+                        placeholder="e.g. Hard Disk Drive" maxLength={200}
                         value={p.device} onChange={e => setPart(i, 'device', e.target.value)} />
                     </td>
                     <td className="px-2 py-1.5 w-14">
@@ -353,19 +357,19 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
                     <td className="px-2 py-1.5">
                       <input className="w-full bg-transparent text-sm outline-none"
                         style={{ color: 'var(--text-base)' }}
-                        placeholder="Model no." value={p.model}
+                        placeholder="Model no." maxLength={200} value={p.model}
                         onChange={e => setPart(i, 'model', e.target.value)} />
                     </td>
                     <td className="px-2 py-1.5">
                       <input className="w-full bg-transparent text-sm outline-none"
                         style={{ color: 'var(--text-base)' }}
-                        placeholder="Serial no." value={p.serial_no}
+                        placeholder="Serial no." maxLength={100} value={p.serial_no}
                         onChange={e => setPart(i, 'serial_no', e.target.value)} />
                     </td>
                     <td className="px-2 py-1.5">
                       <input className="w-full bg-transparent text-sm outline-none"
                         style={{ color: 'var(--text-base)' }}
-                        placeholder="Remarks" value={p.remarks}
+                        placeholder="Remarks" maxLength={500} value={p.remarks}
                         onChange={e => setPart(i, 'remarks', e.target.value)} />
                     </td>
                     <td className="px-2 py-1.5 w-8">
@@ -389,7 +393,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
                 if (f.field_type === 'text') {
                   return (
                     <Field key={f.id} label={f.label}>
-                      <Input value={customValues[f.id] ?? ''} onChange={e => setCustom(f.id, e.target.value)} />
+                      <Input maxLength={1000} value={customValues[f.id] ?? ''} onChange={e => setCustom(f.id, e.target.value)} />
                     </Field>
                   )
                 }
@@ -472,13 +476,13 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
               </Select>
             </Field>
             <Field label="Client Rep. Name (for sign-off)">
-              <Input placeholder="Name of client who acknowledged" value={form.client_name}
+              <Input placeholder="Name of client who acknowledged" maxLength={120} value={form.client_name}
                 onChange={e => set('client_name', e.target.value)} />
             </Field>
           </div>
           <div className="mt-3">
             <Field label="Remarks">
-              <Textarea rows={2} placeholder="Any additional remarks..." value={form.remarks}
+              <Textarea rows={2} placeholder="Any additional remarks..." maxLength={2000} value={form.remarks}
                 onChange={e => set('remarks', e.target.value)} />
             </Field>
           </div>
@@ -496,7 +500,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
                 Tech / Engineer
               </p>
               <Field label="Engineer Name">
-                <Input placeholder="Full name" value={form.reported_by}
+                <Input placeholder="Full name" maxLength={120} value={form.reported_by}
                   onChange={e => set('reported_by', e.target.value)} />
               </Field>
               <Field label="Date">
@@ -527,7 +531,7 @@ export default function JobReportForm({ ticketId, siteId, onSaved, locked = fals
                 Client Representative
               </p>
               <Field label="Client Rep. Name" hint="Leave blank — client fills this">
-                <Input placeholder="To be filled by client" value={form.client_name}
+                <Input placeholder="To be filled by client" maxLength={120} value={form.client_name}
                   onChange={e => set('client_name', e.target.value)} />
               </Field>
               <Field label="Date">

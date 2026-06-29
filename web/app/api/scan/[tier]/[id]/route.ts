@@ -7,10 +7,13 @@ export async function GET(
 ) {
   const { tier, id } = await params
 
+  const { data: org } = await supabaseAdmin.from('organisations').select('intake_questions').limit(1).single()
+  const intakeQuestions = org?.intake_questions ?? {}
+
   if (tier === 'site') {
     const { data, error } = await supabaseAdmin
       .from('sites')
-      .select('id, name, address, city, state, site_contact, site_phone, clients(name)')
+      .select('id, name, address, city, state, site_contact, site_phone, clients(name), elv_systems(id, name, type)')
       .eq('id', id)
       .single()
 
@@ -20,6 +23,8 @@ export async function GET(
       tier: 'site',
       label: data.name,
       sublabel: (data as unknown as { clients: { name: string } | null }).clients?.name ?? '',
+      intake_questions: intakeQuestions,
+      systems: (data as unknown as { elv_systems: { id: string; name: string; type: string }[] }).elv_systems ?? [],
       details: {
         site_id: data.id,
         address: [data.address, data.city, data.state].filter(Boolean).join(', ') || '—',
@@ -48,6 +53,8 @@ export async function GET(
       tier: 'system',
       label: s.name || s.type,
       sublabel: s.sites?.name ?? '',
+      system_type: s.type,
+      intake_questions: intakeQuestions,
       details: {
         site_id: s.site_id,
         client: s.sites?.clients?.name ?? '—',
@@ -81,6 +88,8 @@ export async function GET(
       tier: 'device',
       label: d.name,
       sublabel: d.tag_id ?? d.device_type,
+      system_type: d.elv_systems?.type ?? null,
+      intake_questions: intakeQuestions,
       details: {
         site_id: d.elv_systems?.sites?.id ?? '',
         site: d.elv_systems?.sites?.name ?? '—',

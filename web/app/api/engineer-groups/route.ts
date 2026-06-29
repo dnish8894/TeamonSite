@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 export async function GET() {
   const { data: groups, error } = await supabaseAdmin
     .from('engineer_groups')
-    .select('id, name, description, created_at')
+    .select('id, name, description, group_type, created_at')
     .order('name')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -27,13 +27,16 @@ export async function GET() {
   return NextResponse.json(result)
 }
 
+const GROUP_TYPES = ['project_team', 'maintenance_team']
+
 export async function POST(req: NextRequest) {
   const body = await req.json()
   if (!body.name?.trim()) return NextResponse.json({ error: 'Group name is required.' }, { status: 400 })
+  const group_type = GROUP_TYPES.includes(body.group_type) ? body.group_type : 'maintenance_team'
 
   const { data, error } = await supabaseAdmin
     .from('engineer_groups')
-    .insert({ name: body.name.trim(), description: body.description || null })
+    .insert({ name: body.name.trim(), description: body.description || null, group_type })
     .select('id')
     .single()
 

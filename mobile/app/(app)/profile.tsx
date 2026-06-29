@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Alert, ActivityIndicator, ScrollView,
+  Alert, ActivityIndicator, ScrollView, Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -23,8 +23,9 @@ export default function ProfileScreen() {
   }, [])
 
   async function loadProfile() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
+    if (!user) { setLoading(false); return }
 
     const { data } = await supabase
       .from('users')
@@ -43,16 +44,22 @@ export default function ProfileScreen() {
     setLoading(false)
   }
 
-  async function handleLogout() {
+  async function doSignOut() {
+    await supabase.auth.signOut()
+    router.replace('/(auth)/login')
+  }
+
+  function handleLogout() {
+    // Alert.alert has no effect on web — fall back to window.confirm there.
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('Are you sure you want to sign out?')) {
+        doSignOut()
+      }
+      return
+    }
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out', style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut()
-          router.replace('/(auth)/login')
-        },
-      },
+      { text: 'Sign Out', style: 'destructive', onPress: doSignOut },
     ])
   }
 
@@ -111,6 +118,30 @@ export default function ProfileScreen() {
           ))}
         </View>
 
+        {/* Leave */}
+        <TouchableOpacity style={styles.leaveBtn} onPress={() => router.push('/(app)/leave')} activeOpacity={0.8}>
+          <Text style={styles.leaveText}>📅  My Leave</Text>
+          <Text style={styles.leaveChevron}>›</Text>
+        </TouchableOpacity>
+
+        {/* Claims */}
+        <TouchableOpacity style={styles.leaveBtn} onPress={() => router.push('/(app)/claims')} activeOpacity={0.8}>
+          <Text style={styles.leaveText}>🧾  My Claims</Text>
+          <Text style={styles.leaveChevron}>›</Text>
+        </TouchableOpacity>
+
+        {/* Equipment */}
+        <TouchableOpacity style={styles.leaveBtn} onPress={() => router.push('/(app)/equipment')} activeOpacity={0.8}>
+          <Text style={styles.leaveText}>🧰  My Equipment</Text>
+          <Text style={styles.leaveChevron}>›</Text>
+        </TouchableOpacity>
+
+        {/* Equipment bookings */}
+        <TouchableOpacity style={styles.leaveBtn} onPress={() => router.push('/(app)/bookings')} activeOpacity={0.8}>
+          <Text style={styles.leaveText}>📆  Equipment Bookings</Text>
+          <Text style={styles.leaveChevron}>›</Text>
+        </TouchableOpacity>
+
         {/* App info */}
         <View style={styles.infoCard}>
           {[
@@ -164,6 +195,14 @@ const styles = StyleSheet.create({
   },
   infoLabel: { color: '#6b7280', fontSize: 13 },
   infoValue: { color: '#e7e5e4', fontSize: 13, fontWeight: '600', maxWidth: '60%', textAlign: 'right' },
+
+  leaveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#1c1917', borderRadius: 16, marginBottom: 14,
+    borderWidth: 1, borderColor: '#292524', paddingHorizontal: 16, paddingVertical: 15,
+  },
+  leaveText: { color: '#e7e5e4', fontSize: 15, fontWeight: '600' },
+  leaveChevron: { color: '#6b7280', fontSize: 20 },
 
   logoutBtn: {
     marginTop: 8, backgroundColor: 'rgba(239,68,68,0.12)',

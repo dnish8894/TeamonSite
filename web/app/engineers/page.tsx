@@ -12,8 +12,10 @@ interface Engineer {
   is_available: boolean
   daily_capacity_hr: number
   skills: string[]
+  employee_id: string | null
+  engineer_type?: string
   certifications: { brand: string; level: string; expiry: string }[]
-  users: { full_name: string; phone: string | null; email: string; is_active: boolean } | null
+  users: { full_name: string; phone: string | null; email: string; is_active: boolean; role?: string } | null
   active_jobs?: number
   load_pct?: number
 }
@@ -27,6 +29,7 @@ interface EngineerGroup {
   id: string
   name: string
   description: string | null
+  group_type: 'project_team' | 'maintenance_team'
   created_at: string
   engineer_group_members: GroupMember[]
 }
@@ -51,10 +54,18 @@ const SKILL_COLORS: Record<string, { color: string; bg: string }> = {
 }
 
 const emptyEngForm = {
-  full_name: '', email: '', phone: '', employee_id: '',
-  daily_capacity_hr: '8', skills: [] as string[],
+  full_name: '', email: '', phone: '', employee_id: '', password: '',
+  daily_capacity_hr: '8', skills: [] as string[], engineer_type: 'maintenance',
 }
-const emptyGroupForm = { name: '', description: '' }
+const emptyGroupForm = { name: '', description: '', group_type: 'maintenance_team' as 'project_team' | 'maintenance_team' }
+const GROUP_TYPE_LABELS: Record<string, string> = {
+  project_team: 'Project Team',
+  maintenance_team: 'Maintenance Team',
+}
+const GROUP_TYPE_COLORS: Record<string, { color: string; bg: string }> = {
+  project_team:     { color: 'var(--brand-accent, #f97316)', bg: 'rgba(249,115,22,0.12)' },
+  maintenance_team: { color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
+}
 
 /* ── Component ──────────────────────────────────────── */
 export default function EngineersPage() {
@@ -68,6 +79,7 @@ export default function EngineersPage() {
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
   const [engForm, setEngForm]     = useState(emptyEngForm)
+  const [editingEng, setEditingEng] = useState<Engineer | null>(null)
 
   // Groups state
   const [groups, setGroups]               = useState<EngineerGroup[]>([])
@@ -77,6 +89,7 @@ export default function EngineersPage() {
   const [editingGroup, setEditingGroup]   = useState<EngineerGroup | null>(null)
   const [groupForm, setGroupForm]         = useState(emptyGroupForm)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [groupTypeDraft, setGroupTypeDraft] = useState<'project_team' | 'maintenance_team'>('maintenance_team')
   const [groupSaving, setGroupSaving]     = useState(false)
   const [groupError, setGroupError]       = useState('')
 
@@ -120,23 +133,63 @@ export default function EngineersPage() {
     e.preventDefault()
     if (!engForm.full_name.trim()) return setError('Name is required.')
     if (!engForm.email.trim())     return setError('Email is required.')
+    if (!editingEng && !engForm.password.trim()) return setError('Password is required.')
+    if (engForm.password && engForm.password.length < 6) return setError('Password must be at least 6 characters.')
     setSaving(true); setError('')
-    const res = await fetch('/api/engineers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        full_name:         engForm.full_name.trim(),
-        email:             engForm.email.trim(),
-        phone:             engForm.phone || null,
-        employee_id:       engForm.employee_id || null,
-        daily_capacity_hr: parseInt(engForm.daily_capacity_hr) || 8,
-        skills:            engForm.skills,
-      }),
-    })
-    const json = await res.json()
-    if (!res.ok) { setError(json.error); setSaving(false); return }
-    setShowEngModal(false); setEngForm(emptyEngForm); loadEngineers()
+
+    if (editingEng) {
+      const res = await fetch(`/api/engineers/${editingEng.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name:         engForm.full_name.trim(),
+          email:             engForm.email.trim(),
+          phone:             engForm.phone || null,
+          employee_id:       engForm.employee_id || null,
+          daily_capacity_hr: parseInt(engForm.daily_capacity_hr) || 8,
+          skills:            engForm.skills,
+          engineer_type:     engForm.engineer_type,
+          ...(engForm.password ? { password: engForm.password } : {}),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error); setSaving(false); return }
+    } else {
+      const res = await fetch('/api/engineers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name:         engForm.full_name.trim(),
+          email:             engForm.email.trim(),
+          password:          engForm.password,
+          phone:             engForm.phone || null,
+          employee_id:       engForm.employee_id || null,
+          daily_capacity_hr: parseInt(engForm.daily_capacity_hr) || 8,
+          skills:            engForm.skills,
+          engineer_type:     engForm.engineer_type,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error); setSaving(false); return }
+    }
+
+    setShowEngModal(false); setEditingEng(null); setEngForm(emptyEngForm); loadEngineers()
     setSaving(false)
+  }
+
+  function openEditEngineer(eng: Engineer) {
+    setEditingEng(eng)
+    setEngForm({
+      full_name: eng.users?.full_name ?? '',
+      email: eng.users?.email ?? '',
+      phone: eng.users?.phone ?? '',
+      employee_id: eng.employee_id ?? '',
+      password: '',
+      daily_capacity_hr: String(eng.daily_capacity_hr ?? 8),
+      skills: eng.skills ?? [],
+      engineer_type: eng.engineer_type ?? 'maintenance',
+    })
+    setError(''); setShowEngModal(true)
   }
 
   async function toggleAvailability(id: string, current: boolean) {
@@ -155,7 +208,7 @@ export default function EngineersPage() {
     const res = await fetch('/api/engineer-groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: groupForm.name.trim(), description: groupForm.description || null }),
+      body: JSON.stringify({ name: groupForm.name.trim(), description: groupForm.description || null, group_type: groupForm.group_type }),
     })
     const json = await res.json()
     if (!res.ok) { setGroupError(json.error); setGroupSaving(false); return }
@@ -169,7 +222,7 @@ export default function EngineersPage() {
     const res = await fetch(`/api/engineer-groups/${editingGroup.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ engineer_ids: selectedMembers }),
+      body: JSON.stringify({ engineer_ids: selectedMembers, group_type: groupTypeDraft }),
     })
     const json = await res.json()
     if (!res.ok) { setGroupError(json.error); setGroupSaving(false); return }
@@ -186,6 +239,7 @@ export default function EngineersPage() {
   function openMembersModal(group: EngineerGroup) {
     setEditingGroup(group)
     setSelectedMembers(group.engineer_group_members.map(m => m.engineer_id))
+    setGroupTypeDraft(group.group_type ?? 'maintenance_team')
     setGroupError('')
     setShowMembersModal(true)
   }
@@ -204,7 +258,7 @@ export default function EngineersPage() {
           </p>
         </div>
         {tab === 'engineers' && (
-          <Button onClick={() => { setShowEngModal(true); setError('') }}>
+          <Button onClick={() => { setShowEngModal(true); setEditingEng(null); setEngForm(emptyEngForm); setError('') }}>
             <span className="flex items-center gap-2"><Plus size={16} /> Add Engineer</span>
           </Button>
         )}
@@ -275,8 +329,16 @@ export default function EngineersPage() {
                     style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-semibold" style={{ color: 'var(--text-base)' }}>
+                        <p className="font-semibold flex items-center gap-2" style={{ color: 'var(--text-base)' }}>
                           {eng.users?.full_name ?? 'Unknown'}
+                          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                            style={eng.engineer_type === 'project'
+                              ? { background: 'rgba(249,115,22,0.12)', color: 'var(--brand-accent, #f97316)' }
+                              : eng.engineer_type === 'both'
+                              ? { background: 'var(--color-success-bg)', color: 'var(--color-success)' }
+                              : { background: 'var(--color-info-bg)', color: 'var(--color-info)' }}>
+                            {eng.engineer_type === 'project' ? 'Project' : eng.engineer_type === 'both' ? 'Both' : 'Maintenance'}
+                          </span>
                         </p>
                         {eng.users?.email && (
                           <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-subtle)' }}>
@@ -289,16 +351,24 @@ export default function EngineersPage() {
                           </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => toggleAvailability(eng.id, eng.is_available)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
-                        style={eng.is_available
-                          ? { background: 'var(--color-success-bg)', color: 'var(--color-success)' }
-                          : { background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
-                        {eng.is_available
-                          ? <><CheckCircle size={12} /> Available</>
-                          : <><XCircle size={12} /> Unavailable</>}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => openEditEngineer(eng)}
+                          className="p-1.5 rounded-lg transition-colors"
+                          style={{ color: 'var(--color-info)' }}
+                          title="Edit engineer">
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => toggleAvailability(eng.id, eng.is_available)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
+                          style={eng.is_available
+                            ? { background: 'var(--color-success-bg)', color: 'var(--color-success)' }
+                            : { background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
+                          {eng.is_available
+                            ? <><CheckCircle size={12} /> Available</>
+                            : <><XCircle size={12} /> Unavailable</>}
+                        </button>
+                      </div>
                     </div>
 
                     <div>
@@ -359,7 +429,17 @@ export default function EngineersPage() {
                     style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-semibold" style={{ color: 'var(--text-base)' }}>{group.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold" style={{ color: 'var(--text-base)' }}>{group.name}</p>
+                          {(() => {
+                            const gtc = GROUP_TYPE_COLORS[group.group_type] ?? GROUP_TYPE_COLORS.maintenance_team
+                            return (
+                              <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: gtc.bg, color: gtc.color }}>
+                                {GROUP_TYPE_LABELS[group.group_type] ?? 'Maintenance Team'}
+                              </span>
+                            )
+                          })()}
+                        </div>
                         {group.description && (
                           <p className="text-xs mt-0.5" style={{ color: 'var(--text-subtle)' }}>{group.description}</p>
                         )}
@@ -411,9 +491,10 @@ export default function EngineersPage() {
         </>
       )}
 
-      {/* ── Add Engineer Modal ── */}
+      {/* ── Add / Edit Engineer Modal ── */}
       {showEngModal && (
-        <Modal title="Add Engineer" onClose={() => { setShowEngModal(false); setError('') }} width="max-w-lg">
+        <Modal title={editingEng ? `Edit — ${editingEng.users?.full_name ?? 'Engineer'}` : 'Add Engineer'}
+          onClose={() => { setShowEngModal(false); setEditingEng(null); setError('') }} width="max-w-lg">
           <form onSubmit={handleAddEngineer} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Field label="Full Name" required>
@@ -425,9 +506,21 @@ export default function EngineersPage() {
                   onChange={e => setE('employee_id', e.target.value)} />
               </Field>
             </div>
+            <Field label="Engineer Type" hint="Maintenance engineers service tickets; project engineers handle project work">
+              <Select value={engForm.engineer_type} onChange={e => setE('engineer_type', e.target.value)}>
+                <option value="maintenance">Maintenance Engineer</option>
+                <option value="project">Project Engineer</option>
+                <option value="both">Both (Maintenance &amp; Project)</option>
+              </Select>
+            </Field>
             <Field label="Email" required>
               <Input type="email" placeholder="ahmad@yourcompany.com" value={engForm.email}
                 onChange={e => setE('email', e.target.value)} />
+            </Field>
+            <Field label="Password" required={!editingEng}
+              hint={editingEng ? 'Leave blank to keep their current password' : 'Min 6 characters — used to log in on web and mobile'}>
+              <Input type="password" placeholder="••••••••" value={engForm.password}
+                onChange={e => setE('password', e.target.value)} />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Phone">
@@ -460,8 +553,8 @@ export default function EngineersPage() {
             </div>
             {error && <p className="text-sm px-3 py-2 rounded-lg" style={{ color: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}>{error}</p>}
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" type="button" onClick={() => setShowEngModal(false)}>Cancel</Button>
-              <Button type="submit" loading={saving}>Save Engineer</Button>
+              <Button variant="secondary" type="button" onClick={() => { setShowEngModal(false); setEditingEng(null) }}>Cancel</Button>
+              <Button type="submit" loading={saving}>{editingEng ? 'Save Changes' : 'Save Engineer'}</Button>
             </div>
           </form>
         </Modal>
@@ -479,6 +572,13 @@ export default function EngineersPage() {
               <Input placeholder="Optional description" value={groupForm.description}
                 onChange={e => setGroupForm(f => ({ ...f, description: e.target.value }))} />
             </Field>
+            <Field label="Group Type" hint="Sets the privilege of any engineer assigned to this group">
+              <Select value={groupForm.group_type}
+                onChange={e => setGroupForm(f => ({ ...f, group_type: e.target.value as 'project_team' | 'maintenance_team' }))}>
+                <option value="maintenance_team">Maintenance Team</option>
+                <option value="project_team">Project Team</option>
+              </Select>
+            </Field>
             {groupError && <p className="text-sm px-3 py-2 rounded-lg" style={{ color: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}>{groupError}</p>}
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="secondary" type="button" onClick={() => setShowGroupModal(false)}>Cancel</Button>
@@ -495,6 +595,12 @@ export default function EngineersPage() {
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
               Select engineers to add to this group. Engineers can belong to multiple groups.
             </p>
+            <Field label="Group Type" hint="Saving this group sets every member's role to match">
+              <Select value={groupTypeDraft} onChange={e => setGroupTypeDraft(e.target.value as 'project_team' | 'maintenance_team')}>
+                <option value="maintenance_team">Maintenance Team</option>
+                <option value="project_team">Project Team</option>
+              </Select>
+            </Field>
             <div className="space-y-2 max-h-72 overflow-y-auto">
               {engineers.map(eng => {
                 const selected = selectedMembers.includes(eng.id)

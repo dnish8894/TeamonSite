@@ -63,6 +63,7 @@ export interface PdfData {
   ticket: {
     ticket_no: string; title: string; description: string | null
     type: string; priority: string; status: string
+    quotation_no?: string | null
     reporter_name: string | null; reporter_phone: string | null
     site_id?: string | null
     created_at: string; resolved_at: string | null; closed_at: string | null
@@ -86,7 +87,7 @@ export interface PdfData {
     custom_field_values?: Record<string, string> | null
   } | null
   activities: Array<{ action: string; new_value: string | null; note: string | null; created_at: string; users: { full_name: string } | null }>
-  org: { name: string; phone: string | null; email: string | null; address: string | null; report_settings?: ReportSettings | null }
+  org: { name: string; phone: string | null; email: string | null; address: string | null; logo_url?: string | null; report_settings?: ReportSettings | null }
 }
 
 export function getApplicableExtraFields(data: PdfData) {
@@ -119,23 +120,50 @@ export async function generateJobReportPdf(data: PdfData) {
   const fmt     = (d: string | null) => d ? new Date(d).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
   const fmtTime = (d: string | null) => d ? new Date(d).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'
 
+  // Pre-fetch the org logo once (if set) so pageHeader() — called sync, possibly multiple times per doc — can embed it
+  let logoBase64: string | null = null
+  let logoFormat: 'PNG' | 'JPEG' = 'PNG'
+  if (org.logo_url) {
+    try {
+      const blob = await (await fetch(org.logo_url)).blob()
+      logoFormat = blob.type.includes('jpeg') || blob.type.includes('jpg') ? 'JPEG' : 'PNG'
+      logoBase64 = await new Promise<string>(resolve => {
+        const r = new FileReader(); r.onloadend = () => resolve(r.result as string); r.readAsDataURL(blob)
+      })
+    } catch { /* logo failed to load — header falls back to text-only */ }
+  }
+
   // ── Page header ──────────────────────────────────────
   function pageHeader() {
     doc.setFillColor(...NAVY)
     doc.rect(0, 0, W, 22, 'F')
     doc.setTextColor(...WHITE)
+    const textX = logoBase64 ? ml + 18 : ml
+    if (logoBase64) {
+      try { doc.addImage(logoBase64, logoFormat, ml, 3, 15, 15) } catch { /* skip broken logo */ }
+    }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13)
-    doc.text(org.name, ml, 10)
+    doc.text(org.name, textX, 10)
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7)
     const sub = [org.address, org.phone ? `Tel: ${org.phone}` : null, org.email].filter(Boolean).join('   ·   ')
-    doc.text(sub, ml, 16)
-    // Call ID box
+    doc.text(sub, textX, 16)
+    // Call ID box — widened, with text auto-shrunk to fit so long ticket numbers stay visible
+    const boxW = 54
+    const boxX = W - ml - boxW
+    const padX = 2.5
     doc.setFillColor(...WHITE)
-    doc.roundedRect(W - ml - 38, 4, 38, 14, 1.5, 1.5, 'F')
+    doc.roundedRect(boxX, 4, boxW, 14, 1.5, 1.5, 'F')
     doc.setTextColor(...GREY); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold')
-    doc.text('CALL ID', W - ml - 36, 10)
-    doc.setTextColor(...NAVY); doc.setFontSize(9)
-    doc.text(ticket.ticket_no, W - ml - 36, 16)
+    doc.text('CALL ID', boxX + padX, 9.5)
+    doc.setTextColor(...NAVY); doc.setFont('helvetica', 'bold')
+    let idFont = 10
+    doc.setFontSize(idFont)
+    const avail = boxW - padX * 2
+    while (idFont > 6 && doc.getTextWidth(ticket.ticket_no) > avail) {
+      idFont -= 0.5
+      doc.setFontSize(idFont)
+    }
+    doc.text(ticket.ticket_no, boxX + padX, 15.5)
     // Separator
     doc.setDrawColor(...LGREY); doc.setLineWidth(0.3)
     doc.line(ml, 23, W - ml, 23)
@@ -205,7 +233,7 @@ export async function generateJobReportPdf(data: PdfData) {
 
   // ── Breakdown Details box ────────────────────────────
   const bStart = y
-  doc.setFillColor(245, 247, 250); doc.roundedRect(ml, y, cw, 72, 2, 2, 'F')
+  doc.setFillColor(245, 247, 250); doc.roundedRect(ml, y, cw, 58, 2, 2, 'F')
   doc.setFillColor(...NAVY); doc.roundedRect(ml, y, cw, 7.5, 2, 2, 'F')
   doc.rect(ml, y + 4, cw, 3.5, 'F')
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...WHITE)
@@ -217,12 +245,11 @@ export async function generateJobReportPdf(data: PdfData) {
     ['Company',       ticket.sites?.clients?.name ?? '—',            'Tech. Name',    ticket.engineers?.users?.full_name ?? '—'],
     ['Site Name',     ticket.sites?.name ?? '—',                     'Response Date', fmt(ticket.created_at)],
     ['Reported By',   ticket.reporter_name ?? '—',                   'Response Time', fmtTime(ticket.created_at)],
-    ['Log Date',      fmt(ticket.created_at),                        'On-Site Time',  report?.onsite_time ?? '—'],
-    ['Log Time',      fmtTime(ticket.created_at),                    'Off-Site Time', report?.offsite_time ?? '—'],
-    ['Priority',      ticket.priority,                               'Target Resolve',fmtTime(ticket.sla_resolve_due)],
-    ['System',        ticket.elv_systems?.type.replace(/_/g,' ') ?? '—', 'Labour Hrs', report?.labour_hrs != null ? `${report.labour_hrs} hrs` : '—'],
-    ['Job Type',      ticket.type.replace(/_/g,' '),                 'Travel Hrs',    report?.travel_hrs != null ? `${report.travel_hrs} hrs` : '—'],
-    ['Severity',      ticket.priority,                               'Job Status',    (report?.job_status ?? ticket.status).replace(/_/g,' ').toUpperCase()],
+    ['Log Date',      fmt(ticket.created_at),                        'Log Time',      fmtTime(ticket.created_at)],
+    ['On-Site Time',  report?.onsite_time ?? '—',                    'Target Resolve',fmtTime(ticket.sla_resolve_due)],
+    ['Priority',      ticket.priority,                               'System',        ticket.elv_systems?.type.replace(/_/g,' ') ?? '—'],
+    ['Job Type',      ticket.type.replace(/_/g,' '),                 'Severity',      ticket.priority],
+    ['Job Status',    (report?.job_status ?? ticket.status).replace(/_/g,' ').toUpperCase(), 'Quotation No.', ticket.quotation_no ?? '—'],
   ])
 
   doc.setDrawColor(...LGREY); doc.roundedRect(ml, bStart, cw, y - bStart + 3, 2, 2)

@@ -41,7 +41,11 @@ export default function TicketsScreen() {
   const [userId,     setUserId]     = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+    supabase.auth.getSession().then(({ data }) => {
+      const uid = data.session?.user?.id ?? null
+      setUserId(uid)
+      if (!uid) setLoading(false)
+    })
   }, [])
 
   const loadTickets = useCallback(async () => {
@@ -116,6 +120,9 @@ export default function TicketsScreen() {
           <Text style={styles.headerTitle}>My Tickets</Text>
           <Text style={styles.headerSub}>{tickets.length} ticket{tickets.length !== 1 ? 's' : ''}</Text>
         </View>
+        <TouchableOpacity style={styles.newBtn} onPress={() => router.push('/(app)/tickets/new')} activeOpacity={0.85}>
+          <Text style={styles.newBtnText}>+ New</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Filter tabs */}
@@ -173,6 +180,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '800' },
   headerSub:   { color: '#6b7280', fontSize: 13, marginTop: 2 },
+  newBtn:      { backgroundColor: '#f97316', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
+  newBtnText:  { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   filterRow: {
     flexDirection: 'row', paddingHorizontal: 20, gap: 8, marginBottom: 12,

@@ -59,10 +59,11 @@ export async function POST(req: NextRequest) {
   } else {
     authUserId = authUser.user.id
   }
-  void authUserId // used in future for linking
-
-  // 3 — Create users table entry
+  // 3 — Create users table entry with the SAME id as the auth account.
+  // RLS policies resolve organisation via `users.id = auth.uid()`, so these must match
+  // or the user will see empty data everywhere once they're outside the service-role context (e.g. mobile app).
   const { error: userErr } = await supabaseAdmin.from('users').insert({
+    id:              authUserId,
     organisation_id: org.id,
     email:           admin_email.trim(),
     full_name:       admin_name?.trim() || admin_email.trim(),
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
 
   if (userErr) {
     // Clean up — delete auth user + org
-    await supabaseAdmin.auth.admin.deleteUser(authUser.user!.id)
+    await supabaseAdmin.auth.admin.deleteUser(authUserId)
     await supabaseAdmin.from('organisations').delete().eq('id', org.id)
     return NextResponse.json({ error: userErr.message }, { status: 500 })
   }

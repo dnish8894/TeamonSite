@@ -14,7 +14,7 @@ export async function GET(
       .from('tickets')
       .select(`
         id, ticket_no, title, description, type, priority, status,
-        is_chargeable, reporter_name, reporter_phone, site_id,
+        is_chargeable, quotation_no, reporter_name, reporter_phone, site_id,
         created_at, resolved_at, closed_at,
         sla_resolve_due, sla_response_due,
         sites ( name, address, city, state, site_contact, site_phone, clients ( name, type ) ),
@@ -34,7 +34,7 @@ export async function GET(
       .select('action, new_value, note, created_at, users ( full_name )')
       .eq('ticket_id', id)
       .order('created_at', { ascending: true }),
-    supabaseAdmin.from('organisations').select('name, phone, email, address, report_settings').limit(1).single(),
+    supabaseAdmin.from('organisations').select('name, phone, email, address, logo_url, report_settings').limit(1).single(),
   ])
 
   return NextResponse.json({ ticket, report, activities, org })

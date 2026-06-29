@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import * as Notifications from 'expo-notifications'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 
@@ -22,6 +23,15 @@ export default function RootLayout() {
     if (!session && !inAuth) router.replace('/(auth)/login')
     if (session  &&  inAuth) router.replace('/(app)')
   }, [session, segments])
+
+  // Tapping a push notification navigates straight to the ticket
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      const url = response.notification.request.content.data?.url as string | undefined
+      if (url) router.push(url as never)
+    })
+    return () => sub.remove()
+  }, [])
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

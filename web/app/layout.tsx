@@ -3,6 +3,8 @@ import { headers } from 'next/headers'
 import './globals.css'
 import Sidebar from '@/components/Sidebar'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import BrandColorProvider from '@/components/BrandColorProvider'
+import RoleGuard from '@/components/RoleGuard'
 
 export const metadata: Metadata = {
   title: 'TeamOnSite',
@@ -20,12 +22,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider>
+          <BrandColorProvider />
           {isAuth ? (
             // Auth pages (login, setup) — full screen, no sidebar
             <div style={{ background: 'var(--bg-base)' }}>{children}</div>
           ) : (
             // App pages — sidebar + main
             <div className="flex min-h-screen" style={{ background: 'var(--bg-base)' }}>
+              <RoleGuard />
               <Sidebar />
               <main className="flex-1 overflow-auto" style={{ background: 'var(--bg-base)' }}>
                 {children}

@@ -22,6 +22,7 @@ interface TicketRow {
   closed_at: string | null
   sites: { id: string; name: string; city: string | null; state: string | null } | null
   elv_systems: { id: string; name: string; type: string } | null
+  devices: { id: string; name: string; tag_id: string | null } | null
 }
 
 // ── Label maps ────────────────────────────────────────────────────────────────
@@ -185,7 +186,17 @@ export default function IssueReportPage() {
     })
     const recurring = Object.values(recurrMap).filter(r => r.count > 1).sort((a,b) => b.count - a.count)
 
-    return { total, open, resolved, breakdown, p1p2, avgRes, siteList, typeList, sysList, byPriority, byStatus, recurring }
+    // Recurring issues by DEVICE: same device with multiple breakdown tickets
+    const devMap: Record<string, { device: string; tag: string | null; site: string; count: number }> = {}
+    tickets.forEach(t => {
+      if (!t.devices || t.type !== 'breakdown') return
+      const k = t.devices.id
+      if (!devMap[k]) devMap[k] = { device: t.devices.name, tag: t.devices.tag_id, site: t.sites?.name ?? '—', count: 0 }
+      devMap[k].count++
+    })
+    const recurringDevices = Object.values(devMap).filter(d => d.count > 1).sort((a,b) => b.count - a.count)
+
+    return { total, open, resolved, breakdown, p1p2, avgRes, siteList, typeList, sysList, byPriority, byStatus, recurring, recurringDevices }
   }, [tickets])
 
   const periodLabel = `${formatDate(from)} – ${formatDate(to)}`
@@ -258,6 +269,21 @@ export default function IssueReportPage() {
         startY: y,
         head: [['Site', 'Breakdown Count']],
         body: stats.recurring.map(r => [r.site, r.count]),
+        headStyles: { fillColor: [239,68,68], textColor: [255,255,255] },
+        styles: { fontSize: 8 },
+      })
+      y = (doc as jsPDF & { lastAutoTable:{finalY:number} }).lastAutoTable.finalY + 8
+    }
+
+    // Recurring faulty devices
+    if (stats.recurringDevices.length > 0) {
+      if (y > 150) { doc.addPage(); y = 20 }
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(239,68,68)
+      doc.text('RECURRING FAULTY DEVICES', 14, y); y += 6
+      autoTable(doc, {
+        startY: y,
+        head: [['Device', 'Tag ID', 'Site', 'Breakdown Count']],
+        body: stats.recurringDevices.map(d => [d.device, d.tag ?? '—', d.site, d.count]),
         headStyles: { fillColor: [239,68,68], textColor: [255,255,255] },
         styles: { fontSize: 8 },
       })
@@ -352,6 +378,17 @@ export default function IssueReportPage() {
     const ws4 = XLSX.utils.aoa_to_sheet(ticketData)
     ws4['!cols'] = [10,35,15,22,55,28,12,18,14,14].map(w => ({ wch: w }))
     XLSX.utils.book_append_sheet(wb, ws4, 'All Tickets')
+
+    // Recurring faulty devices
+    if (stats.recurringDevices.length > 0) {
+      const devData = [
+        ['Device', 'Tag ID', 'Site', 'Breakdown Count'],
+        ...stats.recurringDevices.map(d => [d.device, d.tag ?? '', d.site, d.count]),
+      ]
+      const ws5 = XLSX.utils.aoa_to_sheet(devData)
+      ws5['!cols'] = [{ wch: 35 }, { wch: 20 }, { wch: 30 }, { wch: 16 }]
+      XLSX.utils.book_append_sheet(wb, ws5, 'Recurring Devices')
+    }
 
     XLSX.writeFile(wb, `IssueReport_${from}_to_${to}.xlsx`)
   }
@@ -610,6 +647,43 @@ export default function IssueReportPage() {
                     <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>breakdown{r.count !== 1 ? 's' : ''}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Recurring breakdown devices ─────────────────────────────── */}
+          {stats.recurringDevices.length > 0 && (
+            <div className="rounded-xl border p-5 mb-6"
+              style={{ background: 'var(--bg-card)', borderColor: 'rgba(239,68,68,0.3)' }}>
+              <div className="flex items-center gap-2 mb-4">
+                <AlertTriangle size={16} style={{ color: '#ef4444' }} />
+                <h2 className="font-semibold text-sm" style={{ color: '#ef4444' }}>
+                  Recurring Faulty Devices
+                </h2>
+                <span className="text-xs" style={{ color: 'var(--text-subtle)' }}>
+                  — same device with multiple breakdown tickets in this period
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Device', 'Tag ID', 'Site', 'Breakdowns'].map(h => (
+                        <th key={h} className="px-3 py-2 text-left text-xs font-semibold uppercase" style={{ color: 'var(--text-subtle)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.recurringDevices.map((d, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--text-base)' }}>{d.device}</td>
+                        <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--color-info)' }}>{d.tag ?? '—'}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{d.site}</td>
+                        <td className="px-3 py-2 font-bold" style={{ color: '#ef4444' }}>{d.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

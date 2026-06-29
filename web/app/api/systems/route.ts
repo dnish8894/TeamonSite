@@ -6,7 +6,8 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseAdmin
     .from('elv_systems')
-    .select('id, name, type, brand, model, install_date, warranty_expiry, location_desc, is_active, site_id')
+    .select('id, name, type, type_label, brand, model, install_date, warranty_expiry, location_desc, is_active, site_id')
+    .eq('is_active', true)
     .order('type')
 
   if (siteId) query = query.eq('site_id', siteId)

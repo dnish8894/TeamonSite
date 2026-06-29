@@ -35,9 +35,17 @@ export async function generateJobReportDocx(data: PdfData) {
   const { ticket, report, org } = data
   const rs = org.report_settings ?? {}
 
-  const title = rs.report_title ?? 'FIELD SERVICE REPORT'
+  const title = rs.report_title || 'FIELD SERVICE REPORT'
 
   const children: Paragraph[] = []
+
+  if (org.logo_url) {
+    try {
+      const buf = await dataUrlToBuffer(org.logo_url)
+      const isJpg = /\.jpe?g($|\?)/i.test(org.logo_url)
+      children.push(new Paragraph({ children: [new ImageRun({ data: buf, transformation: { width: 70, height: 70 }, type: isJpg ? 'jpg' : 'png' })] }))
+    } catch { /* logo failed to load — fall back to text-only header */ }
+  }
 
   children.push(new Paragraph({ text: org.name, heading: HeadingLevel.TITLE }))
   children.push(new Paragraph({ text: [org.address, org.phone ? `Tel: ${org.phone}` : null, org.email].filter(Boolean).join('  ·  '), spacing: { after: 200 } }))
@@ -49,11 +57,10 @@ export async function generateJobReportDocx(data: PdfData) {
     ['Company', ticket.sites?.clients?.name ?? '—', 'Tech. Name', ticket.engineers?.users?.full_name ?? '—'],
     ['Site Name', ticket.sites?.name ?? '—', 'Response Date', fmt(ticket.created_at)],
     ['Reported By', ticket.reporter_name ?? '—', 'Response Time', fmtTime(ticket.created_at)],
-    ['Priority', ticket.priority, 'Target Resolve', fmtTime(ticket.sla_resolve_due)],
-    ['System', ticket.elv_systems?.type?.replace(/_/g, ' ') ?? '—', 'Labour Hrs', report?.labour_hrs != null ? `${report.labour_hrs} hrs` : '—'],
-    ['Job Type', ticket.type.replace(/_/g, ' '), 'Travel Hrs', report?.travel_hrs != null ? `${report.travel_hrs} hrs` : '—'],
-    ['On-Site Time', report?.onsite_time ?? '—', 'Off-Site Time', report?.offsite_time ?? '—'],
-    ['Job Status', (report?.job_status ?? ticket.status).replace(/_/g, ' ').toUpperCase(), '', ''],
+    ['On-Site Time', report?.onsite_time ?? '—', 'Target Resolve', fmtTime(ticket.sla_resolve_due)],
+    ['Priority', ticket.priority, 'System', ticket.elv_systems?.type?.replace(/_/g, ' ') ?? '—'],
+    ['Job Type', ticket.type.replace(/_/g, ' '), 'Severity', ticket.priority],
+    ['Job Status', (report?.job_status ?? ticket.status).replace(/_/g, ' ').toUpperCase(), 'Quotation No.', ticket.quotation_no ?? '—'],
   ]
   const table = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },

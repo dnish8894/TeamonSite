@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { emailClientCompleted } from '@/lib/clientEmail'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -7,7 +8,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: ticket, error: fetchErr } = await supabaseAdmin
     .from('tickets')
-    .select('work_status, work_seconds, work_last_resume_at, work_started_at')
+    .select('work_status, work_seconds, work_last_resume_at, work_started_at, device_id, ticket_no, reporter_email, sites(name)')
     .eq('id', id)
     .single()
 
@@ -51,6 +52,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { error } = await supabaseAdmin.from('tickets').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // On completion, stamp the serviced device's "Last Service Date" + notify the client.
+  if (action === 'complete') {
+    if (ticket.device_id) {
+      await supabaseAdmin.from('devices')
+        .update({ last_service_date: now.toISOString().slice(0, 10) })
+        .eq('id', ticket.device_id)
+    }
+    if (ticket.reporter_email) {
+      const siteName = (ticket.sites as unknown as { name: string } | null)?.name ?? ''
+      await emailClientCompleted(ticket.reporter_email, ticket.ticket_no, siteName).catch(() => {})
+    }
+  }
 
   await supabaseAdmin.from('ticket_activities').insert({
     ticket_id: id,

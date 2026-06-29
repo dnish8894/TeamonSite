@@ -7,7 +7,8 @@ import { Field, Input, Select } from '@/components/ui/Field'
 import Button from '@/components/ui/Button'
 import {
   Plus, CalendarClock, AlertTriangle, CheckCircle,
-  Clock, Play, Trash2, ToggleLeft, ToggleRight, Wrench
+  Clock, Trash2, ToggleLeft, ToggleRight,
+  FileText, ChevronDown, ChevronRight
 } from 'lucide-react'
 
 /* ── Types ─────────────────────────────────────────── */
@@ -18,10 +19,28 @@ interface Schedule {
   sites:       { id: string; name: string; clients: { name: string } | null } | null
   elv_systems: { id: string; name: string; type: string } | null
   engineers:   { id: string; users: { full_name: string } | null } | null
+  pm_schedule_devices: { device_id: string; devices: { id: string; name: string | null; tag_id: string | null } | null }[] | null
+  pm_reports: PMReportSummary[] | null
+}
+interface PMReportSummary {
+  id: string; visit_date: string; status: string; created_at: string
+  engineers: { users: { full_name: string } | null } | null
+}
+interface DeviceLine {
+  device_id: string; name: string | null; tag_id: string | null
+  serviced: boolean; status: 'pass' | 'fault' | 'not_done'; notes: string
+}
+interface PMReport {
+  id: string; schedule_id: string; visit_date: string; summary: string | null
+  status: string; devices: DeviceLine[]; engineer_id: string | null
+  pm_schedules: { name: string } | null
+  sites: { name: string; clients: { name: string } | null } | null
+  elv_systems: { name: string; type: string } | null
 }
 interface Site     { id: string; name: string; clients: { name: string } | null }
 interface System   { id: string; name: string; type: string; site_id: string }
 interface Engineer { id: string; users: { full_name: string } | null }
+interface Device   { id: string; name: string | null; tag_id: string | null; system_id: string }
 
 const INTERVAL_OPTIONS = [
   { label: 'Monthly (30 days)',    value: 30  },
@@ -64,11 +83,14 @@ export default function PMSchedulePage() {
   const [schedules, setSchedules]   = useState<Schedule[]>([])
   const [sites, setSites]           = useState<Site[]>([])
   const [systems, setSystems]       = useState<System[]>([])
+  const [devices, setDevices]       = useState<Device[]>([])
+  const [deviceIds, setDeviceIds]   = useState<string[]>([])
   const [engineers, setEngineers]   = useState<Engineer[]>([])
   const [loading, setLoading]       = useState(true)
   const [showModal, setShowModal]   = useState(false)
   const [saving, setSaving]         = useState(false)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [expanded, setExpanded]     = useState<string | null>(null)
   const [error, setError]           = useState('')
   const [form, setForm]             = useState(emptyForm)
   const [filter, setFilter]         = useState<'all' | 'overdue' | 'upcoming' | 'inactive'>('all')
@@ -87,12 +109,21 @@ export default function PMSchedulePage() {
     setLoading(false)
   }
 
-  // Load systems when site changes in form
+  // Load systems + devices when site changes in form
   useEffect(() => {
-    if (!form.site_id) { setSystems([]); return }
+    if (!form.site_id) { setSystems([]); setDevices([]); return }
     fetch(`/api/systems?site_id=${form.site_id}`)
       .then(r => r.json()).then(d => setSystems(Array.isArray(d) ? d : []))
+    fetch(`/api/devices?site_id=${form.site_id}`)
+      .then(r => r.json()).then(d => setDevices(Array.isArray(d) ? d : []))
   }, [form.site_id])
+
+  // Devices selectable in the modal — scoped to the chosen system, else whole site
+  const pickableDevices = form.system_id
+    ? devices.filter(d => d.system_id === form.system_id)
+    : devices
+  const toggleDevice = (id: string) =>
+    setDeviceIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
 
   useEffect(() => { load() }, [])
 
@@ -104,22 +135,29 @@ export default function PMSchedulePage() {
     const res = await fetch('/api/pm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, interval_days: parseInt(form.interval_days) }),
+      body: JSON.stringify({ ...form, interval_days: parseInt(form.interval_days), device_ids: deviceIds }),
     })
     const json = await res.json()
     if (!res.ok) { setError(json.error); setSaving(false); return }
-    setShowModal(false); setForm(emptyForm); load()
+    setShowModal(false); setForm(emptyForm); setDeviceIds([]); load()
   }
 
-  async function generateTicket(schedId: string) {
+  async function generateReport(schedId: string) {
     setGenerating(schedId)
     const res  = await fetch(`/api/pm/${schedId}/generate`, { method: 'POST' })
     const json = await res.json()
     setGenerating(null)
-    if (res.ok) {
-      load()
-      router.push(`/tickets/${json.ticketId}`)
-    }
+    if (res.ok) router.push(`/pm/reports/${json.reportId}`)
+  }
+
+  function openReport(reportId: string) {
+    router.push(`/pm/reports/${reportId}`)
+  }
+
+  async function deleteReport(reportId: string) {
+    if (!confirm('Delete this report?')) return
+    await fetch(`/api/pm/reports/${reportId}`, { method: 'DELETE' })
+    load()
   }
 
   async function toggleActive(sched: Schedule) {
@@ -153,12 +191,12 @@ export default function PMSchedulePage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-base)' }}>PM Schedules</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-base)' }}>Servicing &amp; Schedules</h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-            Recurring preventive maintenance visits
+            Recurring preventive maintenance — generate a PM report per visit
           </p>
         </div>
-        <Button onClick={() => { setShowModal(true); setError('') }}>
+        <Button onClick={() => { setShowModal(true); setError(''); setForm(emptyForm); setDeviceIds([]) }}>
           <span className="flex items-center gap-2"><Plus size={16} /> Add Schedule</span>
         </Button>
       </div>
@@ -265,6 +303,11 @@ export default function PMSchedulePage() {
                       {sched.elv_systems && (
                         <span>🔧 {SYS_LABELS[sched.elv_systems.type] ?? sched.elv_systems.type}</span>
                       )}
+                      {(sched.pm_schedule_devices?.length ?? 0) > 0 && (
+                        <span title={sched.pm_schedule_devices!.map(r => r.devices?.name ?? r.devices?.tag_id).filter(Boolean).join(', ')}>
+                          🖥 {sched.pm_schedule_devices!.length} device{sched.pm_schedule_devices!.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                       <span>🔄 Every {sched.interval_days} days</span>
                       <span>📋 {TYPE_LABELS[sched.ticket_type] ?? sched.ticket_type}</span>
                       {sched.engineers?.users && (
@@ -284,14 +327,14 @@ export default function PMSchedulePage() {
                     {/* Generate ticket */}
                     {sched.is_active && (
                       <button
-                        onClick={() => generateTicket(sched.id)}
+                        onClick={() => generateReport(sched.id)}
                         disabled={generating === sched.id}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50 transition-all"
                         style={{ background: statusBg, color: statusColor }}
-                        title="Generate PM ticket now">
+                        title="Generate PM report now">
                         {generating === sched.id
                           ? <span className="flex items-center gap-1"><Clock size={12} /> Generating...</span>
-                          : <span className="flex items-center gap-1"><Play size={12} /> Generate Ticket</span>}
+                          : <span className="flex items-center gap-1"><FileText size={12} /> Generate Report</span>}
                       </button>
                     )}
 
@@ -314,6 +357,58 @@ export default function PMSchedulePage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Reports list */}
+                {(() => {
+                  const reports = [...(sched.pm_reports ?? [])].sort(
+                    (a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+                  const isOpen = expanded === sched.id
+                  return (
+                    <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+                      <button
+                        onClick={() => setExpanded(isOpen ? null : sched.id)}
+                        className="flex items-center gap-1.5 text-xs font-medium"
+                        style={{ color: 'var(--text-muted)' }}>
+                        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        Reports ({reports.length})
+                      </button>
+                      {isOpen && (
+                        <div className="mt-2 space-y-1.5">
+                          {reports.length === 0 ? (
+                            <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>
+                              No reports yet — click “Generate Report”.
+                            </p>
+                          ) : reports.map(r => (
+                            <div key={r.id}
+                              className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+                              style={{ background: 'var(--bg-base)', borderColor: 'var(--border)' }}>
+                              <button onClick={() => openReport(r.id)}
+                                className="flex items-center gap-2 text-left text-xs flex-1">
+                                <FileText size={13} style={{ color: 'var(--text-subtle)' }} />
+                                <span style={{ color: 'var(--text-base)' }}>{fmtDate(r.visit_date)}</span>
+                                <span className="px-1.5 py-0.5 rounded-full"
+                                  style={r.status === 'completed'
+                                    ? { background: 'var(--color-success-bg)', color: 'var(--color-success)' }
+                                    : { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>
+                                  {r.status === 'completed' ? 'Completed' : 'Draft'}
+                                </span>
+                                {r.engineers?.users && (
+                                  <span style={{ color: 'var(--text-subtle)' }}>· {r.engineers.users.full_name}</span>
+                                )}
+                              </button>
+                              <button onClick={() => deleteReport(r.id)}
+                                title="Delete report" style={{ color: 'var(--text-subtle)' }}
+                                onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-danger)')}
+                                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-subtle)')}>
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
@@ -332,7 +427,7 @@ export default function PMSchedulePage() {
             <div className="grid grid-cols-2 gap-4">
               <Field label="Site" required>
                 <Select value={form.site_id}
-                  onChange={e => { set('site_id', e.target.value); set('system_id', '') }}>
+                  onChange={e => { set('site_id', e.target.value); set('system_id', ''); setDeviceIds([]) }}>
                   <option value="">— Select site —</option>
                   {sites.map(s => (
                     <option key={s.id} value={s.id}>{s.name}{s.clients ? ` (${s.clients.name})` : ''}</option>
@@ -340,7 +435,7 @@ export default function PMSchedulePage() {
                 </Select>
               </Field>
               <Field label="ELV System" hint="Optional — leave blank for site-wide">
-                <Select value={form.system_id} onChange={e => set('system_id', e.target.value)}>
+                <Select value={form.system_id} onChange={e => { set('system_id', e.target.value); setDeviceIds([]) }}>
                   <option value="">— All systems —</option>
                   {systems.map(s => (
                     <option key={s.id} value={s.id}>{SYS_LABELS[s.type] ?? s.type}{s.name ? ` — ${s.name}` : ''}</option>
@@ -365,6 +460,35 @@ export default function PMSchedulePage() {
                 </Select>
               </Field>
             </div>
+
+            {/* Covered devices — optional; blank = whole system */}
+            {form.site_id && (
+              <Field label="Covered Devices" hint="Optional — leave all unchecked to cover the whole system">
+                {pickableDevices.length === 0 ? (
+                  <p className="text-sm" style={{ color: 'var(--text-subtle)' }}>
+                    No devices found for this {form.system_id ? 'system' : 'site'}.
+                  </p>
+                ) : (
+                  <div className="rounded-lg border max-h-44 overflow-y-auto divide-y"
+                    style={{ borderColor: 'var(--border)' }}>
+                    {pickableDevices.map(d => (
+                      <label key={d.id}
+                        className="flex items-center gap-2 px-3 py-2 cursor-pointer text-sm"
+                        style={{ color: 'var(--text-base)' }}>
+                        <input type="checkbox" checked={deviceIds.includes(d.id)}
+                          onChange={() => toggleDevice(d.id)} />
+                        <span>{d.name ?? 'Device'}{d.tag_id ? ` · ${d.tag_id}` : ''}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {deviceIds.length > 0 && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    {deviceIds.length} device{deviceIds.length !== 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </Field>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <Field label="Assign Engineer">
@@ -392,6 +516,7 @@ export default function PMSchedulePage() {
           </form>
         </Modal>
       )}
+
     </div>
   )
 }
