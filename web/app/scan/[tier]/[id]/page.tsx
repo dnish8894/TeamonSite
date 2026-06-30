@@ -110,6 +110,7 @@ export default function ScanPage() {
         <p className="text-gray-500 mt-2 text-sm">
           Your fault report has been received. Our team will respond shortly.
         </p>
+        <p className="text-xs text-gray-400 mt-6">Powered by teamonsite.app</p>
       </div>
     </div>
   )
@@ -117,9 +118,9 @@ export default function ScanPage() {
   return (
     <div className="min-h-screen" style={{ background: '#f0f4f8' }}>
       {/* Header */}
-      <div style={{ background: '#1e2130' }} className="px-6 py-4 flex items-center gap-3">
-        <span className="text-white font-bold text-lg">ELV Field</span>
-        <span className="text-blue-400 font-bold text-lg">Manager</span>
+      <div style={{ background: '#1e2130' }} className="px-6 py-4 flex items-center gap-2">
+        <span className="text-white font-bold text-lg">Report</span>
+        <span className="text-blue-400 font-bold text-lg">Questionnaire</span>
       </div>
 
       <div className="max-w-md mx-auto px-4 py-8 space-y-4">
@@ -249,7 +250,7 @@ export default function ScanPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 pb-4">
-          Powered by ELV Field Manager
+          Powered by teamonsite.app
         </p>
       </div>
     </div>
