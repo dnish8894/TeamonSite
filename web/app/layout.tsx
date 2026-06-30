@@ -11,12 +11,14 @@ export const metadata: Metadata = {
   description: 'Field service management — TeamOnSite',
 }
 
-const AUTH_PATHS = ['/login', '/setup']
+// Standalone, full-screen pages with no admin sidebar/role-guard.
+// /scan is the public client questionnaire reached via QR — must not show the app shell.
+const STANDALONE_PATHS = ['/login', '/setup', '/scan']
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const h        = await headers()
   const pathname = h.get('x-pathname') ?? ''
-  const isAuth   = AUTH_PATHS.some(p => pathname.startsWith(p))
+  const isAuth   = STANDALONE_PATHS.some(p => pathname.startsWith(p))
 
   return (
     <html lang="en" suppressHydrationWarning>
