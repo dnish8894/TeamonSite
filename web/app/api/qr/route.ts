@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import QRCode from 'qrcode'
 
+// Base URL for the scan links: prefer the explicit env, else derive from the
+// incoming request (works on Vercel/any host without needing NEXT_PUBLIC_APP_URL).
+function appBaseUrl(req: NextRequest): string {
+  const env = process.env.NEXT_PUBLIC_APP_URL
+  if (env && !env.includes('localhost')) return env.replace(/\/$/, '')
+  const host = req.headers.get('host')
+  const proto = req.headers.get('x-forwarded-proto') ?? (host?.includes('localhost') ? 'http' : 'https')
+  return host ? `${proto}://${host}` : (env ?? 'http://localhost:3000')
+}
+
 export async function GET(req: NextRequest) {
   const tier = req.nextUrl.searchParams.get('tier')   // site | system | device
   const id   = req.nextUrl.searchParams.get('id')
@@ -9,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   if (tier && id) {
     // Single QR code as data URL
-    const url = `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/scan/${tier}/${id}`
+    const url = `${appBaseUrl(req)}/scan/${tier}/${id}`
     const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
     return NextResponse.json({ url, dataUrl })
   }
@@ -26,7 +36,7 @@ export async function GET(req: NextRequest) {
       ? await supabaseAdmin.from('devices').select('id, name, tag_id, device_type, system_id').in('system_id', sysIds).eq('is_active', true)
       : { data: [] }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+    const baseUrl = appBaseUrl(req)
 
     async function makeQR(tier: string, id: string, label: string, sublabel: string) {
       const url = `${baseUrl}/scan/${tier}/${id}`

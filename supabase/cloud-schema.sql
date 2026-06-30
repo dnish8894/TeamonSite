@@ -3560,3 +3560,13 @@ INSERT INTO storage.buckets (id, name, public) VALUES
   ('hr-docs','hr-docs',true),
   ('attendance-photos','attendance-photos',true)
 ON CONFLICT (id) DO NOTHING;
+
+-- ── Role grants (Supabase) ─────────────────────────────────────────────
+-- (dump was generated with --no-privileges, which strips these)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES    IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES  IN SCHEMA public TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES    TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES  TO anon, authenticated, service_role;

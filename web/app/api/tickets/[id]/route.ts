@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { pushToUser, engineerUserId, pushToGroups } from '@/lib/push'
 import { emailClientAssigned, emailClientCompleted } from '@/lib/clientEmail'
+import { getCurrentUser } from '@/lib/auth'
 
 export async function GET(
   _req: NextRequest,
@@ -43,6 +44,18 @@ export async function PATCH(
   const body = await req.json()
   const groupIds: string[] | undefined = body.group_ids
   delete body.group_ids
+  // Approve / reject a floating (pending-approval) ticket.
+  const action: string | undefined = body.action
+  delete body.action
+  if (action === 'approve') {
+    const approver = await getCurrentUser()
+    body.is_pending_approval = false
+    body.approved_at = new Date().toISOString()
+    body.approved_by = approver?.id ?? null
+  } else if (action === 'reject') {
+    body.is_pending_approval = false
+    body.status = 'cancelled'
+  }
 
   // Fetch current ticket state for comparison
   const { data: current } = await supabaseAdmin

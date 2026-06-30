@@ -15,6 +15,11 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://koltrsjgisabvntwvxrp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvbHRyc2pnaXNhYnZudHd2eHJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3ODM4MjMsImV4cCI6MjA5NzM1OTgyM30.4CtdgJLj_ONrI6G4jun6KIT764_BrbUFctxSyz9w9m8",
+        "EXPO_PUBLIC_API_URL": "https://teamon-site.vercel.app"
       }
     },
     "production": {

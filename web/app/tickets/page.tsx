@@ -35,6 +35,7 @@ interface Ticket {
   client_name: string
   engineer_name: string | null
   created_at: string
+  is_pending_approval?: boolean
 }
 
 export default function TicketsPage() {
@@ -53,11 +54,25 @@ export default function TicketsPage() {
 
   useEffect(() => { load() }, [])
 
-  const filtered = filter === 'all'
-    ? tickets
+  async function decide(id: string, action: 'approve' | 'reject', e: React.MouseEvent) {
+    e.stopPropagation()
+    if (action === 'reject' && !confirm('Reject this client request?')) return
+    await fetch(`/api/tickets/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
+    })
+    load()
+  }
+
+  // Pending-approval (floating) tickets are kept out of the normal views.
+  const pending = tickets.filter(t => t.is_pending_approval)
+  const active  = tickets.filter(t => !t.is_pending_approval)
+  const filtered = filter === 'pending'
+    ? pending
+    : filter === 'all'
+    ? active
     : filter === 'breached'
-    ? tickets.filter(t => t.is_sla_breached)
-    : tickets.filter(t => t.priority === filter)
+    ? active.filter(t => t.is_sla_breached)
+    : active.filter(t => t.priority === filter)
 
   return (
     <div className="p-8">
@@ -65,7 +80,9 @@ export default function TicketsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-base)' }}>Tickets</h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>{tickets.length} open tickets</p>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+            {active.length} open tickets{pending.length > 0 ? ` · ${pending.length} awaiting approval` : ''}
+          </p>
         </div>
         <button onClick={() => setShowNew(true)}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
@@ -78,12 +95,15 @@ export default function TicketsPage() {
       <div className="flex gap-2 mb-6 flex-wrap">
         {[
           { key: 'all',     label: 'All' },
+          { key: 'pending',  label: pending.length > 0 ? `⏳ Pending Approval (${pending.length})` : 'Pending Approval' },
           { key: 'breached',label: 'SLA Breached' },
           { key: 'P1',      label: 'P1 Critical' },
           { key: 'P2',      label: 'P2 High' },
           { key: 'P3',      label: 'P3 Medium' },
           { key: 'P4',      label: 'P4 Low' },
-        ].map(({ key, label }) => (
+        ].map(({ key, label }) => {
+          const isPending = key === 'pending' && pending.length > 0
+          return (
           <button
             key={key}
             onClick={() => setFilter(key)}
@@ -91,12 +111,14 @@ export default function TicketsPage() {
             style={
               filter === key
                 ? { background: '#f97316', color: '#fff', borderColor: '#f97316' }
+                : isPending
+                ? { background: 'var(--color-warning-bg)', color: 'var(--color-warning)', borderColor: 'var(--color-warning)' }
                 : { background: 'var(--bg-card)', color: 'var(--text-muted)', borderColor: 'var(--border)' }
             }
           >
             {label}
           </button>
-        ))}
+        )})}
       </div>
 
       {showNew && <NewTicketForm onClose={() => setShowNew(false)} onSaved={load} />}
@@ -161,7 +183,20 @@ export default function TicketsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {ticket.is_sla_breached ? (
+                      {ticket.is_pending_approval ? (
+                        <div className="flex items-center gap-2">
+                          <button onClick={e => decide(ticket.id, 'approve', e)}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold"
+                            style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>
+                            ✓ Approve
+                          </button>
+                          <button onClick={e => decide(ticket.id, 'reject', e)}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold"
+                            style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
+                            ✕ Reject
+                          </button>
+                        </div>
+                      ) : ticket.is_sla_breached ? (
                         <span className="flex items-center gap-1 text-xs font-medium"
                           style={{ color: 'var(--color-danger)' }}>
                           <AlertTriangle size={12} /> Breached

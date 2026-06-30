@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { clampStr } from '@/lib/validate'
 import { getCurrentUser } from '@/lib/auth'
 import { emailClientSubmission } from '@/lib/clientEmail'
+import { pushToUser } from '@/lib/push'
 
 const TICKET_TYPES = ['breakdown', 'preventive_maintenance', 'installation', 'inspection', 'upgrade', 'relocation']
 const PRIORITIES = ['P1', 'P2', 'P3', 'P4']
@@ -50,11 +51,14 @@ export async function POST(req: NextRequest) {
 
   // Logged-in staff get attributed as the creator; public QR self-service submissions have no session.
   const creator = await getCurrentUser()
+  // Public (client) submissions are "floating" — they need approval before entering the flow.
+  const pendingApproval = !creator
 
   const { data: created, error } = await supabaseAdmin.from('tickets').insert({
     ...insert,
     organisation_id: org.id,
     created_by: creator?.id ?? null,
+    is_pending_approval: pendingApproval,
     ticket_no: '',
   }).select('id, ticket_no').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -67,6 +71,23 @@ export async function POST(req: NextRequest) {
       siteName = s?.name ?? ''
     }
     await emailClientSubmission(insert.reporter_email, created.ticket_no, insert.title, siteName).catch(() => {})
+  }
+
+  // Notify all engineers + admins that a client submission needs approval.
+  if (pendingApproval) {
+    const [{ data: engs }, { data: admins }] = await Promise.all([
+      supabaseAdmin.from('engineers').select('user_id'),
+      supabaseAdmin.from('users').select('id').eq('role', 'admin').eq('is_active', true),
+    ])
+    const ids = new Set<string>()
+    for (const e of engs ?? []) if (e.user_id) ids.add(e.user_id as string)
+    for (const a of admins ?? []) if (a.id) ids.add(a.id as string)
+    await Promise.allSettled([...ids].map(id => pushToUser(id, {
+      title: 'New Client Request — Needs Approval',
+      body: `${created.ticket_no}: ${insert.title}`,
+      url: '/tickets',
+      tag: `approve-${created.id}`,
+    })))
   }
 
   return NextResponse.json({ ok: true })
